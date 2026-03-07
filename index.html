@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Pesate Cucciolate">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#2C3E35">
+<title>Pesate Cucciolate</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{min-height:100%;overscroll-behavior:none}
+  body{background:#E8E4DC;font-family:system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif}
+  input:focus{border-color:#2C3E35!important;outline:none}
+  button:active{opacity:.8}
+  ::-webkit-scrollbar{display:none}
+  #root{max-width:420px;margin:0 auto;min-height:100dvh;background:#FAF7F2;display:flex;flex-direction:column}
+  .spin{animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div id="root">
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<script type="text/babel">
+const {useState,useRef,useEffect} = React;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONSTANTS
+// ─────────────────────────────────────────────────────────────────────────────
+const COLLAR_COLORS = [
+  "#FF0000","#FF3B30","#FF6B6B","#FF2D55",
+  "#FF6700","#FF9500","#FFAB40","#FF7043",
+  "#FFCC00","#FFE600","#F4FF21","#FFD54F",
+  "#AAFF00","#76FF03","#CCFF33","#B2FF59",
+  "#00C853","#00E676","#1DB954","#69F0AE",
+  "#00BFA5","#1DE9B6","#00E5FF","#18FFFF",
+  "#00B0FF","#00C8FF","#40C4FF","#0091EA",
+  "#2979FF","#2962FF","#3D5AFE","#1565C0",
+  "#651FFF","#7C4DFF","#6200EA","#AA00FF",
+  "#D500F9","#E040FB","#FF00FF","#FF4081",
+  "#F50057","#FF80AB","#FF6EC7","#FF1493",
+  "#8D6E63","#795548","#FFFFFF","#212121",
+];
+const TOO_LIGHT=["#FFFFFF","#F4FF21","#FFCC00","#FFE600","#FFD54F","#CCFF33","#B2FF59","#AAFF00"];
+const STORAGE_KEY='mc_growth_v2';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+const fmtShort=d=>{const x=new Date(d);return`${x.getDate().toString().padStart(2,"0")}/${(x.getMonth()+1).toString().padStart(2,"0")}`;};
+const fmtFull=d=>new Date(d).toLocaleDateString("it-IT",{day:"2-digit",month:"short",year:"numeric"});
+const todayISO=()=>new Date().toISOString().split("T")[0];
+const dayAge=(birth,date)=>Math.round((new Date(date)-new Date(birth))/86400000);
+const gainPct=ws=>{if(ws.length<2)return null;const l=ws[ws.length-1].weight,p=ws[ws.length-2].weight;return(((l-p)/p)*100).toFixed(1);};
+const lineColor=(k)=>k.colorId;
+function hexToRgb(hex){
+  if(!hex||!hex.startsWith('#')||hex.length<7)return{r:44,g:62,b:53};
+  return{r:parseInt(hex.slice(1,3),16),g:parseInt(hex.slice(3,5),16),b:parseInt(hex.slice(5,7),16)};
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LOCAL STORAGE
+// ─────────────────────────────────────────────────────────────────────────────
+function loadData(){
+  try{const s=localStorage.getItem(STORAGE_KEY);return s?JSON.parse(s):null;}
+  catch{return null;}
+}
+function saveData(d){
+  try{localStorage.setItem(STORAGE_KEY,JSON.stringify(d));}
+  catch{}
+}
+
+const DEMO_DATA={litters:[{id:1,name:"Cucciolata Primavera 2025",mother:"Luna di Camelidea",father:"Thor of Silverwood",birthDate:"2025-03-01",kittens:[
+  {id:1,name:"Aragorn",gender:"M",colorId:"#FF3B30",weights:[
+    {date:"2025-03-01",weight:112},{date:"2025-03-02",weight:120},{date:"2025-03-03",weight:131},
+    {date:"2025-03-04",weight:143},{date:"2025-03-05",weight:158},{date:"2025-03-06",weight:170}]},
+  {id:2,name:"Arya",gender:"F",colorId:"#FF4081",weights:[
+    {date:"2025-03-01",weight:98},{date:"2025-03-02",weight:105},{date:"2025-03-03",weight:115},
+    {date:"2025-03-04",weight:124},{date:"2025-03-05",weight:136},{date:"2025-03-06",weight:149}]},
+  {id:3,name:"Gandalf",gender:"M",colorId:"#2979FF",weights:[
+    {date:"2025-03-01",weight:105},{date:"2025-03-02",weight:112},{date:"2025-03-03",weight:122},
+    {date:"2025-03-04",weight:133},{date:"2025-03-05",weight:145},{date:"2025-03-06",weight:159}]}
+]}]};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CANVAS CHART DRAWING (for PDF)
+// ─────────────────────────────────────────────────────────────────────────────
+function drawKittenCanvas(weights,color,W=500,H=220){
+  const c=document.createElement('canvas');
+  c.width=W*2;c.height=H*2;
+  const ctx=c.getContext('2d');ctx.scale(2,2);
+  const PL=52,PR=15,PT=12,PB=32,cw=W-PL-PR,ch=H-PT-PB;
+  const vals=weights.map(w=>w.weight);
+  if(!vals.length){ctx.fillStyle='#fff';ctx.fillRect(0,0,W,H);return c.toDataURL();}
+  const mn=Math.min(...vals),mx=Math.max(...vals),rng=mx-mn||50;
+  const pMin=mn-rng*.12,pMax=mx+rng*.12;
+  const toX=i=>PL+(i/Math.max(vals.length-1,1))*cw;
+  const toY=v=>PT+ch-((v-pMin)/(pMax-pMin))*ch;
+  ctx.fillStyle='#FEFCF8';ctx.fillRect(0,0,W,H);
+  
+  ctx.strokeStyle='#e0dcd4';ctx.lineWidth=.8;ctx.setLineDash([4,4]);
+  [0,1,2,3].forEach(i=>{
+    const v=pMin+i*(pMax-pMin)/3,y=toY(v);
+    ctx.beginPath();ctx.moveTo(PL,y);ctx.lineTo(W-PR,y);ctx.stroke();
+    ctx.fillStyle='#a09888';ctx.font='10px system-ui';ctx.textAlign='right';
+    ctx.fillText(Math.round(v)+'g',PL-4,y+3.5);
+  });
+  ctx.setLineDash([]);
+  
+  const grad=ctx.createLinearGradient(0,PT,0,PT+ch);
+  grad.addColorStop(0,color+'55');grad.addColorStop(1,color+'00');
+  ctx.beginPath();
+  vals.forEach((v,i)=>i?ctx.lineTo(toX(i),toY(v)):ctx.moveTo(toX(i),toY(v)));
+  ctx.lineTo(toX(vals.length-1),PT+ch);ctx.lineTo(toX(0),PT+ch);ctx.closePath();
+  ctx.fillStyle=grad;ctx.fill();
+  
+  ctx.beginPath();ctx.strokeStyle=color;ctx.lineWidth=2.5;ctx.lineJoin='round';ctx.lineCap='round';
+  vals.forEach((v,i)=>i?ctx.lineTo(toX(i),toY(v)):ctx.moveTo(toX(i),toY(v)));
+  ctx.stroke();
+  
+  vals.forEach((v,i)=>{
+    ctx.beginPath();ctx.arc(toX(i),toY(v),4,0,Math.PI*2);
+    ctx.fillStyle='#fff';ctx.fill();ctx.strokeStyle=color;ctx.lineWidth=2;ctx.stroke();
+    const lbl=fmtShort(weights[i].date);
+    ctx.fillStyle='#a09888';ctx.font='9px system-ui';ctx.textAlign='center';
+    ctx.fillText(lbl,toX(i),H-4);
+  });
+  return c.toDataURL('image/png');
+}
+
+function drawLitterCanvas(kittens,W=520,H=240){
+  const c=document.createElement('canvas');
+  c.width=W*2;c.height=H*2;
+  const ctx=c.getContext('2d');ctx.scale(2,2);
+  const allDates=[...new Set(kittens.flatMap(k=>k.weights.map(w=>w.date)))].sort();
+  const allVals=kittens.flatMap(k=>k.weights.map(w=>w.weight));
+  ctx.fillStyle='#FEFCF8';ctx.fillRect(0,0,W,H);
+  if(!allVals.length)return c.toDataURL();
+  const PL=52,PR=55,PT=12,PB=32,cw=W-PL-PR,ch=H-PT-PB;
+  const mn=Math.min(...allVals),mx=Math.max(...allVals),rng=mx-mn||50;
+  const pMin=mn-rng*.12,pMax=mx+rng*.2;
+  const toX=d=>{const i=allDates.indexOf(d);return allDates.length===1?PL+cw/2:PL+(i/(allDates.length-1))*cw;};
+  const toY=v=>PT+ch-((v-pMin)/(pMax-pMin))*ch;
+  
+  ctx.strokeStyle='#e0dcd4';ctx.lineWidth=.8;ctx.setLineDash([4,4]);
+  [0,1,2,3].forEach(i=>{
+    const v=pMin+i*(pMax-pMin)/3,y=toY(v);
+    ctx.beginPath();ctx.moveTo(PL,y);ctx.lineTo(W-PR,y);ctx.stroke();
+    ctx.fillStyle='#a09888';ctx.font='9px system-ui';ctx.textAlign='right';
+    ctx.fillText(Math.round(v)+'g',PL-4,y+3);
+  });
+  ctx.setLineDash([]);
+  const step=Math.ceil(allDates.length/6);
+  allDates.forEach((d,i)=>{
+    if(i%step!==0&&i!==allDates.length-1)return;
+    const lbl=fmtShort(d);
+    ctx.fillStyle='#a09888';ctx.font='9px system-ui';ctx.textAlign='center';
+    ctx.fillText(lbl,toX(d),H-4);
+  });
+  kittens.forEach((k)=>{
+    const sorted=[...k.weights].sort((a,b)=>a.date.localeCompare(b.date));
+    if(!sorted.length)return;
+    const col=lineColor(k);
+    const grad=ctx.createLinearGradient(0,PT,0,PT+ch);
+    grad.addColorStop(0,col+'28');grad.addColorStop(1,col+'00');
+    ctx.beginPath();
+    sorted.forEach((w,i)=>i?ctx.lineTo(toX(w.date),toY(w.weight)):ctx.moveTo(toX(w.date),toY(w.weight)));
+    ctx.lineTo(toX(sorted[sorted.length-1].date),PT+ch);
+    ctx.lineTo(toX(sorted[0].date),PT+ch);ctx.closePath();
+    ctx.fillStyle=grad;ctx.fill();
+    ctx.beginPath();ctx.strokeStyle=col;ctx.lineWidth=2.2;ctx.lineJoin='round';ctx.lineCap='round';
+    sorted.forEach((w,i)=>i?ctx.lineTo(toX(w.date),toY(w.weight)):ctx.moveTo(toX(w.date),toY(w.weight)));
+    ctx.stroke();
+    sorted.forEach(w=>{
+      ctx.beginPath();ctx.arc(toX(w.date),toY(w.weight),3,0,Math.PI*2);
+      ctx.fillStyle='#fff';ctx.fill();ctx.strokeStyle=col;ctx.lineWidth=1.8;ctx.stroke();
+    });
+    const last=sorted[sorted.length-1];
+    ctx.fillStyle=col;ctx.font='bold 9px system-ui';ctx.textAlign='left';
+    ctx.fillText(k.name,toX(last.date)+5,toY(last.weight)+3);
+  });
+  return c.toDataURL('image/png');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EXPORT — CSV
+// ─────────────────────────────────────────────────────────────────────────────
+function dlBlob(blob,name){
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download=name;document.body.appendChild(a);a.click();
+  setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},1500);
+}
+
+function exportLitterCSV(litter){
+  const allDates=[...new Set(litter.kittens.flatMap(k=>k.weights.map(w=>w.date)))].sort();
+  const hdr=['Data','Giorno',...litter.kittens.map(k=>`${k.name} (g)`)];
+  const rows=allDates.map(d=>{
+    const g=litter.birthDate?dayAge(litter.birthDate,d):'';
+    return[d,g,...litter.kittens.map(k=>{const w=k.weights.find(x=>x.date===d);return w?w.weight:'';})];
+  });
+  const csv='\uFEFF'+[hdr,...rows].map(r=>r.join(',')).join('\r\n');
+  dlBlob(new Blob([csv],{type:'text/csv;charset=utf-8'}),`${litter.name}.csv`);
+}
+
+function exportKittenCSV(kitten,litter){
+  const sorted=[...kitten.weights].sort((a,b)=>a.date.localeCompare(b.date));
+  const hdr=['Data','Giorno','Peso (g)','Variazione (g)'];
+  const rows=sorted.map((w,i)=>[
+    w.date,
+    litter.birthDate?dayAge(litter.birthDate,w.date):'',
+    w.weight,
+    i>0?w.weight-sorted[i-1].weight:''
+  ]);
+  const csv='\uFEFF'+[hdr,...rows].map(r=>r.join(',')).join('\r\n');
+  dlBlob(new Blob([csv],{type:'text/csv;charset=utf-8'}),`${litter.name} - ${kitten.name}.csv`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EXPORT — PDF
+// ─────────────────────────────────────────────────────────────────────────────
+function pdfHeader(doc,title,subtitle){
+  const W=210;
+  doc.setFillColor(44,62,53);doc.rect(0,0,W,30,'F');
+  doc.setTextColor(240,234,214);
+  doc.setFontSize(16);doc.setFont('helvetica','bold');
+  doc.text(title,15,13);
+  doc.setFontSize(9);doc.setFont('helvetica','normal');
+  doc.text(subtitle,15,22);
+  doc.setTextColor(44,62,53);
+}
+
+function pdfFooter(doc,pageNum){
+  const W=210;
+  doc.setFontSize(7.5);doc.setTextColor(160,150,140);
+  doc.text(`Esportato il ${fmtFull(todayISO())} — Pesate Cucciolate`,15,291);
+  doc.text(`Pagina ${pageNum}`,W-15,291,{align:'right'});
+}
+
+function exportLitterPDF(litter){
+  if(!window.jspdf){alert('jsPDF non ancora caricato, riprova tra un momento.');return;}
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  const W=210,PL=15,PR=15;
+
+  pdfHeader(doc,`🐱 ${litter.name}`,'Scheda cucciolata completa');
+
+  let y=38;
+  doc.setFontSize(9.5);
+  const info=[
+    litter.mother&&`Madre: ${litter.mother}`,
+    litter.father&&`Padre: ${litter.father}`,
+    litter.birthDate&&`Data nascita: ${fmtFull(litter.birthDate)}`,
+    `Cuccioli: ${litter.kittens.length} (${litter.kittens.filter(k=>k.gender==='M').length}♂, ${litter.kittens.filter(k=>k.gender==='F').length}♀)`,
+  ].filter(Boolean);
+  info.forEach(t=>{doc.text(t,PL,y);y+=5.5;});
+  y+=2;
+
+  if(litter.kittens.some(k=>k.weights.length>0)){
+    doc.setFontSize(11);doc.setFont('helvetica','bold');
+    doc.text('Curva di crescita — tutti i cuccioli',PL,y);y+=3;
+    const img=drawLitterCanvas(litter.kittens);
+    const iW=W-PL-PR,iH=iW*240/520;
+    doc.addImage(img,'PNG',PL,y,iW,iH);
+    y+=iH+4;
+    doc.setFont('helvetica','normal');doc.setFontSize(8.5);
+    let lx=PL;
+    litter.kittens.forEach((k)=>{
+      const rgb=hexToRgb(lineColor(k));
+      doc.setFillColor(rgb.r,rgb.g,rgb.b);doc.rect(lx,y-2,3.5,3.5,'F');
+      doc.setTextColor(44,62,53);doc.text(`${k.name} (${k.gender})`,lx+5,y+1);
+      lx+=32;if(lx>W-30){lx=PL;y+=5.5;}
+    });
+    y+=7;
+  }
+
+  const allDates=[...new Set(litter.kittens.flatMap(k=>k.weights.map(w=>w.date)))].sort();
+  const head=[['Data','G°',...litter.kittens.map(k=>`${k.name}\n${k.gender==='M'?'♂':'♀'}`)]];
+  const body=allDates.map(d=>{
+    const g=litter.birthDate?dayAge(litter.birthDate,d):'-';
+    return[fmtShort(d),String(g),...litter.kittens.map(k=>{const w=k.weights.find(x=>x.date===d);return w?`${w.weight}g`:'-';})];
+  });
+  doc.autoTable({head,body,startY:y,
+    styles:{fontSize:8,cellPadding:2,halign:'center'},
+    headStyles:{fillColor:[44,62,53],textColor:[240,234,214],fontStyle:'bold'},
+    alternateRowStyles:{fillColor:[250,247,242]},
+    columnStyles:{0:{halign:'left',cellWidth:22},1:{cellWidth:10}},
+    margin:{left:PL,right:PR},
+    didDrawPage:({pageNumber})=>pdfFooter(doc,pageNumber)
+  });
+
+  doc.save(`${litter.name}.pdf`);
+}
+
+function exportKittenPDF(kitten,litter){
+  if(!window.jspdf){alert('jsPDF non ancora caricato, riprova tra un momento.');return;}
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  const W=210,PL=15,PR=15;
+  const sorted=[...kitten.weights].sort((a,b)=>a.date.localeCompare(b.date));
+  const col=lineColor(kitten);
+  const rgb=hexToRgb(col);
+
+  pdfHeader(doc,`${kitten.name} (${kitten.gender==='M'?'♂':'♀'})`,litter.name);
+  doc.setFillColor(rgb.r,rgb.g,rgb.b);doc.circle(W-PR-6,15,5,'F');
+
+  let y=38;
+  const lastW=sorted.length?sorted[sorted.length-1].weight:null;
+  const firstW=sorted.length?sorted[0].weight:null;
+  const totalG=lastW&&firstW?lastW-firstW:null;
+  const days=litter.birthDate&&sorted.length?dayAge(litter.birthDate,sorted[sorted.length-1].date):null;
+
+  const stats=[
+    {l:'Peso attuale',v:lastW?`${lastW} g`:'—'},
+    {l:'Guadagno totale',v:totalG?`+${totalG} g`:'—'},
+    {l:'Numero pesate',v:sorted.length},
+    {l:'Età attuale',v:days!==null?`${days} giorni`:'—'},
+  ];
+  const bW=(W-PL-PR-9)/4;
+  stats.forEach((s,i)=>{
+    const bx=PL+i*(bW+3);
+    doc.setFillColor(248,245,240);doc.rect(bx,y,bW,14,'F');
+    doc.setFillColor(44,62,53);doc.rect(bx,y,bW,2,'F');
+    doc.setFontSize(13);doc.setFont('helvetica','bold');doc.setTextColor(44,62,53);
+    doc.text(String(s.v),bx+bW/2,y+9,{align:'center'});
+    doc.setFontSize(6.5);doc.setFont('helvetica','normal');doc.setTextColor(120,110,100);
+    doc.text(s.l,bx+bW/2,y+13,{align:'center'});
+  });
+  y+=20;
+
+  if(sorted.length>1){
+    doc.setFontSize(11);doc.setFont('helvetica','bold');doc.setTextColor(44,62,53);
+    doc.text('Curva di crescita',PL,y);y+=3;
+    const img=drawKittenCanvas(sorted,col);
+    const iW=W-PL-PR,iH=iW*220/500;
+    doc.addImage(img,'PNG',PL,y,iW,iH);
+    y+=iH+6;
+  }
+
+  const head=[['Data','Giorno','Peso (g)','Variazione','Nota']];
+  const body=sorted.map((w,i)=>{
+    const g=litter.birthDate?dayAge(litter.birthDate,w.date):'-';
+    const delta=i>0?w.weight-sorted[i-1].weight:null;
+    const sign=delta===null?'-':(delta>=0?`+${delta}g`:`${delta}g`);
+    return[fmtFull(w.date),String(g),`${w.weight} g`,sign,''];
+  });
+  doc.autoTable({head,body,startY:y,
+    styles:{fontSize:9,cellPadding:2.5},
+    headStyles:{fillColor:[44,62,53],textColor:[240,234,214],fontStyle:'bold'},
+    alternateRowStyles:{fillColor:[250,247,242]},
+    columnStyles:{0:{cellWidth:34},1:{cellWidth:16,halign:'center'},2:{cellWidth:20,halign:'right'},3:{cellWidth:24,halign:'right'},4:{cellWidth:'auto'}},
+    margin:{left:PL,right:PR},
+    didDrawPage:({pageNumber})=>pdfFooter(doc,pageNumber)
+  });
+
+  doc.save(`${litter.name} - ${kitten.name}.pdf`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UI COMPONENTS
+// ─────────────────────────────────────────────────────────────────────────────
+function GenderBadge({gender,small=false}){
+  const m=gender==='M';
+  return <span style={{display:'inline-flex',alignItems:'center',justifyContent:'center',
+    width:small?18:22,height:small?18:22,borderRadius:'50%',
+    background:m?'#DDEEFF':'#FFE0EC',color:m?'#2A6DB0':'#C0296A',
+    fontWeight:'bold',fontSize:small?10:12,flexShrink:0,
+    border:`1.5px solid ${m?'#A8CCEE':'#F4A8C8'}`}}>
+    {gender}
+  </span>;
+}
+
+function ColorDot({colorId,size=24,onClick}){
+  const isLight=TOO_LIGHT.includes(colorId);
+  return <div onClick={onClick} style={{width:size,height:size,borderRadius:'50%',
+    background:colorId,
+    border:isLight?'2px solid rgba(0,0,0,0.2)':'2px solid rgba(255,255,255,0.4)',
+    boxShadow:'0 1px 4px rgba(0,0,0,0.25)',flexShrink:0,
+    cursor:onClick?'pointer':'default',position:'relative'}}>
+    {onClick&&<span style={{position:'absolute',bottom:-2,right:-2,background:'#2C3E35',
+      borderRadius:'50%',width:12,height:12,fontSize:8,color:'#fff',
+      display:'flex',alignItems:'center',justifyContent:'center',
+      border:'1.5px solid #FAF7F2',lineHeight:1}}>✎</span>}
+  </div>;
+}
+
+function ColorPicker({current,onSelect,onClose}){
+  return <div style={OV} onClick={onClose}>
+    <div style={{...MB,paddingBottom:44}} onClick={e=>e.stopPropagation()}>
+      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}>
+        <span style={{fontSize:20}}>🎀</span>
+        <span style={{fontSize:17,fontWeight:'bold',color:'#2C3E35'}}>Colore collarino</span>
+      </div>
+      <p style={{fontSize:12,color:'#9A8E80',margin:'0 0 16px',fontStyle:'italic'}}>
+        Scegli il colore del collarino
+      </p>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(8,1fr)',gap:8}}>
+        {COLLAR_COLORS.map(c=>{
+          const sel=current===c;
+          const isL=TOO_LIGHT.includes(c)||c==='#FFFFFF';
+          return <button key={c} onClick={()=>{onSelect(c);onClose();}} title={c}
+            style={{width:'100%',aspectRatio:'1/1',borderRadius:'50%',background:c,
+              border:sel?'3px solid #2C3E35':isL?'2px solid rgba(0,0,0,0.18)':'2px solid rgba(255,255,255,0.2)',
+              cursor:'pointer',padding:0,position:'relative',
+              boxShadow:sel?'0 0 0 2px #FAF7F2,0 0 0 4px #2C3E35':'0 1px 3px rgba(0,0,0,0.2)'}}>
+            {sel&&<span style={{position:'absolute',inset:0,display:'flex',alignItems:'center',
+              justifyContent:'center',fontSize:13,color:isL?'#2C3E35':'#fff',fontWeight:'bold'}}>✓</span>}
+          </button>;
+        })}
+      </div>
+    </div>
+  </div>;
+}
+
+function MiniChart({weights,color}){
+  if(weights.length<2)return null;
+  const vals=weights.map(w=>w.weight);
+  const mn=Math.min(...vals)*.97,mx=Math.max(...vals)*1.03;
+  const W=90,H=32;
+  const pts=vals.map((v,i)=>`${(i/(vals.length-1))*W},${H-((v-mn)/(mx-mn))*H}`);
+  const id=color.replace(/[^a-z0-9]/gi,'_');
+  return <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{overflow:'visible'}}>
+    <defs><linearGradient id={`ms${id}`} x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stopColor={color} stopOpacity=".3"/>
+      <stop offset="100%" stopColor={color} stopOpacity="0"/>
+    </linearGradient></defs>
+    <polyline points={`${pts.join(' ')} ${W},${H} 0,${H}`} fill={`url(#ms${id})`}/>
+    <polyline points={pts.join(' ')} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <circle cx={parseFloat(pts[pts.length-1].split(',')[0])} cy={parseFloat(pts[pts.length-1].split(',')[1])} r="3" fill={color}/>
+  </svg>;
+}
+
+function LitterChart({kittens}){
+  const has=kittens.some(k=>k.weights.length>0);
+  if(!has)return <div style={{textAlign:'center',color:'#9A8E80',padding:24,fontSize:13}}>Nessun peso ancora.</div>;
+  const allDates=[...new Set(kittens.flatMap(k=>k.weights.map(w=>w.date)))].sort();
+  const allVals=kittens.flatMap(k=>k.weights.map(w=>w.weight));
+  const mn=Math.min(...allVals),mx=Math.max(...allVals),rng=mx-mn||50;
+  const pMin=mn-rng*.12,pMax=mx+rng*.2;
+  const W=320,H=175,PL=40,PR=12,PT=10,PB=28,cw=W-PL-PR,ch=H-PT-PB;
+  const toX=d=>{const i=allDates.indexOf(d);return allDates.length===1?PL+cw/2:PL+(i/(allDates.length-1))*cw;};
+  const toY=v=>PT+ch-((v-pMin)/(pMax-pMin))*ch;
+  const step=Math.ceil(allDates.length/6);
+  return <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{overflow:'visible',display:'block'}}>
+    <defs>{kittens.map((k)=>{const c=lineColor(k),id=c.replace(/[^a-z0-9]/gi,'_');
+      return <linearGradient key={k.id} id={`lc${id}`} x1="0" x2="0" y1="0" y2="1">
+        <stop offset="0%" stopColor={c} stopOpacity=".15"/><stop offset="100%" stopColor={c} stopOpacity="0"/>
+      </linearGradient>;})}
+    </defs>
+    {[0,1,2,3].map(i=>{const v=pMin+i*(pMax-pMin)/3,y=toY(v);return <g key={i}>
+      <line x1={PL} y1={y} x2={W-PR} y2={y} stroke="#E8E2D8" strokeWidth="1" strokeDasharray="3,3"/>
+      <text x={PL-4} y={y+3} textAnchor="end" fontSize="8" fill="#A09888">{Math.round(v)}</text>
+    </g>;})}
+    {allDates.map((d,i)=>{
+      if(i%step!==0&&i!==allDates.length-1)return null;
+      return <text key={d} x={toX(d)} y={H-4} textAnchor="middle" fontSize="8" fill="#A09888">
+        {fmtShort(d)}
+      </text>;
+    })}
+    {kittens.map((k)=>{
+      const s=[...k.weights].sort((a,b)=>a.date.localeCompare(b.date));
+      if(!s.length)return null;
+      const c=lineColor(k),id=c.replace(/[^a-z0-9]/gi,'_');
+      const pts=s.map(w=>`${toX(w.date)},${toY(w.weight)}`);
+      const last=s[s.length-1];
+      return <g key={k.id}>
+        <polygon points={`${pts.join(' ')} ${toX(last.date)},${PT+ch} ${toX(s[0].date)},${PT+ch}`} fill={`url(#lc${id})`}/>
+        <polyline points={pts.join(' ')} fill="none" stroke={c} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+        {s.map(w=><circle key={w.date} cx={toX(w.date)} cy={toY(w.weight)} r="3.2" fill="white" stroke={c} strokeWidth="2"/>)}
+        <text x={toX(last.date)+5} y={toY(last.weight)+3} fontSize="8.5" fontWeight="bold" fill={c}>{k.name}</text>
+      </g>;
+    })}
+  </svg>;
+}
+
+function BigChart({weights,color}){
+  if(!weights.length)return <div style={{textAlign:'center',color:'#999',padding:20}}>Nessun peso registrato</div>;
+  const vals=weights.map(w=>w.weight);
+  const mn=Math.min(...vals),mx=Math.max(...vals),rng=mx-mn||50;
+  const pMin=mn-rng*.12,pMax=mx+rng*.12;
+  const W=300,H=140,PL=40,PR=10,PT=10,PB=24,cw=W-PL-PR,ch=H-PT-PB;
+  const toX=i=>PL+(i/Math.max(vals.length-1,1))*cw;
+  const toY=v=>PT+ch-((v-pMin)/(pMax-pMin))*ch;
+  const pts=vals.map((v,i)=>`${toX(i)},${toY(v)}`).join(' ');
+  const id=color.replace(/[^a-z0-9]/gi,'_');
+  return <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{overflow:'visible'}}>
+    <defs><linearGradient id={`bc${id}`} x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stopColor={color} stopOpacity=".25"/><stop offset="100%" stopColor={color} stopOpacity=".02"/>
+    </linearGradient></defs>
+    {[mn,mn+rng/2,mx].map((v,i)=><g key={i}>
+      <line x1={PL} y1={toY(v)} x2={W-PR} y2={toY(v)} stroke="#e0ddd6" strokeWidth="1" strokeDasharray="3,3"/>
+      <text x={PL-4} y={toY(v)+4} textAnchor="end" fontSize="9" fill="#a09888">{Math.round(v)}</text>
+    </g>)}
+    <polygon points={`${pts} ${toX(vals.length-1)},${PT+ch} ${PL},${PT+ch}`} fill={`url(#bc${id})`}/>
+    <polyline points={pts} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+    {vals.map((v,i)=><g key={i}>
+      <circle cx={toX(i)} cy={toY(v)} r="4" fill="white" stroke={color} strokeWidth="2"/>
+      {weights[i]&&<text x={toX(i)} y={H-4} textAnchor="middle" fontSize="8" fill="#a09888">
+        {fmtShort(weights[i].date)}
+      </text>}
+    </g>)}
+  </svg>;
+}
+
+// Export menu component
+function ExportMenu({onPDF,onCSV,onClose}){
+  return <div style={{...OV,alignItems:'flex-end'}} onClick={onClose}>
+    <div style={{...MB,paddingBottom:36}} onClick={e=>e.stopPropagation()}>
+      <p style={{fontSize:15,fontWeight:'bold',color:'#2C3E35',marginBottom:16}}>📤 Esporta dati</p>
+      <button onClick={()=>{onPDF();onClose();}} style={{...btnStyle,background:'#2C3E35',color:'#F0EAD6',marginBottom:10,display:'flex',alignItems:'center',justifyContent:'center',gap:10}}>
+        <span style={{fontSize:20}}>📄</span>
+        <div style={{textAlign:'left'}}>
+          <div style={{fontWeight:'bold'}}>Esporta PDF</div>
+          <div style={{fontSize:12,opacity:.75}}>Grafico + tabella pesi stampabile</div>
+        </div>
+      </button>
+      <button onClick={()=>{onCSV();onClose();}} style={{...btnStyle,background:'#4A8C5C',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',gap:10}}>
+        <span style={{fontSize:20}}>📊</span>
+        <div style={{textAlign:'left'}}>
+          <div style={{fontWeight:'bold'}}>Esporta CSV</div>
+          <div style={{fontSize:12,opacity:.75}}>Dati grezzi per Excel / Sheets</div>
+        </div>
+      </button>
+    </div>
+  </div>;
+}
+
+// shared modal/overlay CSS-in-JS
+const OV={position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1000,display:'flex',alignItems:'flex-end',justifyContent:'center'};
+const MB={background:'#FAF7F2',borderRadius:'20px 20px 0 0',padding:'24px 20px 36px',width:'100%',maxWidth:420,maxHeight:'88vh',overflowY:'auto'};
+const btnStyle={width:'100%',padding:'12px 14px',borderRadius:12,border:'none',fontSize:15,fontFamily:'inherit',cursor:'pointer',fontWeight:'bold',letterSpacing:'.02em'};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN APP
+// ─────────────────────────────────────────────────────────────────────────────
+function App(){
+  const [data,setData]=useState(()=>loadData()||DEMO_DATA);
+  const [screen,setScreen]=useState('home');
+  const [selLitter,setSelLitter]=useState(null);
+  const [selKitten,setSelKitten]=useState(null);
+  const [showWeight,setShowWeight]=useState(false);
+  const [showBulk,setShowBulk]=useState(false);
+  const [cpTarget,setCpTarget]=useState(null);
+  
+  // Naming states
+  const [editingName,setEditingName]=useState(false);
+  const [nameVal,setNameVal]=useState('');
+  const [editGender,setEditGender]=useState('M');
+  const [editingLitterName,setEditingLitterName]=useState(false);
+  const [litterNameVal,setLitterNameVal]=useState('');
+
+  const [exportTarget,setExportTarget]=useState(null);
+  const [toast,setToast]=useState(null);
+  const [newLF,setNewLF]=useState({name:'',mother:'',father:'',birthDate:todayISO()});
+  const [newKF,setNewKF]=useState({name:'',gender:'M',colorId:'#FF3B30'});
+  const [wForm,setWForm]=useState({date:todayISO(),weight:''});
+  const [bulk,setBulk]=useState({});
+  
+  const wRef=useRef(null);
+  const nameRef=useRef(null);
+  const litterNameRef=useRef(null);
+
+  // persist to localStorage whenever data changes
+  useEffect(()=>saveData(data),[data]);
+  useEffect(()=>{if(showWeight&&wRef.current)setTimeout(()=>wRef.current?.focus(),120);},[showWeight]);
+  useEffect(()=>{if(editingName&&nameRef.current){nameRef.current.focus();nameRef.current.select();}},[editingName]);
+  useEffect(()=>{if(editingLitterName&&litterNameRef.current){litterNameRef.current.focus();litterNameRef.current.select();}},[editingLitterName]);
+
+  function toast2(msg){setToast(msg);setTimeout(()=>setToast(null),2200);}
+
+  const litter=selLitter?data.litters.find(l=>l.id===selLitter):null;
+  const kitten=litter&&selKitten?litter.kittens.find(k=>k.id===selKitten):null;
+
+  // ─── mutations ───
+  function addLitter(){
+    if(!newLF.name)return;
+    const newId = Date.now();
+    setData(d=>({...d,litters:[...d.litters,{...newLF,id:newId,kittens:[]}]}));
+    setNewLF({name:'',mother:'',father:'',birthDate:todayISO()});
+    setSelLitter(newId);
+    setScreen('litter');
+    toast2('Cucciolata creata ✓');
+  }
+  function addKitten(){if(!newKF.name)return;const k={...newKF,id:Date.now(),weights:[]};setData(d=>({...d,litters:d.litters.map(l=>l.id===selLitter?{...l,kittens:[...l.kittens,k]}:l)}));setNewKF({name:'',gender:'M',colorId:'#FF3B30'});setScreen('litter');toast2(`${k.name} aggiunto/a ✓`);}
+  
+  function addWeight(){
+    if(!wForm.weight||!selKitten)return;
+    const w={date:wForm.date,weight:parseFloat(wForm.weight)};
+    setData(d=>({...d,litters:d.litters.map(l=>l.id!==selLitter?l:{...l,kittens:l.kittens.map(k=>k.id!==selKitten?k:{...k,weights:[...k.weights.filter(x=>x.date!==w.date),w].sort((a,b)=>a.date.localeCompare(b.date))})})}));
+    setWForm(f=>({...f,weight:''}));
+    setShowWeight(false);
+    toast2(`${w.weight}g salvato ✓`);
+  }
+  
+  function addBulk(){const date=bulk.__date||todayISO();setData(d=>({...d,litters:d.litters.map(l=>l.id!==selLitter?l:{...l,kittens:l.kittens.map(k=>{const v=bulk[k.id];if(!v)return k;const w={date,weight:parseFloat(v)};return{...k,weights:[...k.weights.filter(x=>x.date!==date),w].sort((a,b)=>a.date.localeCompare(b.date))};  })})}));setBulk({});setShowBulk(false);toast2('Pesata salvata ✓');}
+  function delWeight(date){setData(d=>({...d,litters:d.litters.map(l=>l.id!==selLitter?l:{...l,kittens:l.kittens.map(k=>k.id!==selKitten?k:{...k,weights:k.weights.filter(w=>w.date!==date)})})}));toast2('Peso eliminato ✓');}
+  function changeColor(lid,kid,colorId){setData(d=>({...d,litters:d.litters.map(l=>l.id!==lid?l:{...l,kittens:l.kittens.map(k=>k.id!==kid?k:{...k,colorId})})}));toast2('Colore aggiornato ✓');}
+  
+  function saveKittenEdits(){
+    const t=nameVal.trim();
+    if(!t)return;
+    setData(d=>({...d,litters:d.litters.map(l=>l.id!==selLitter?l:{...l,kittens:l.kittens.map(k=>k.id!==selKitten?k:{...k,name:t,gender:editGender})})}));
+    setEditingName(false);
+    toast2(`Modifiche salvate ✓`);
+  }
+  
+  function deleteKitten(){
+    if(!window.confirm('Vuoi davvero eliminare questo cucciolo? Tutti i suoi dati andranno persi.')) return;
+    setData(d=>({...d,litters:d.litters.map(l=>l.id!==selLitter?l:{...l,kittens:l.kittens.filter(k=>k.id!==selKitten)})}));
+    setEditingName(false);
+    setScreen('litter');
+    setSelKitten(null);
+    toast2('Cucciolo eliminato ✓');
+  }
+
+  function renameLitter(){
+    const t=litterNameVal.trim();
+    if(!t)return;
+    setData(d=>({...d,litters:d.litters.map(l=>l.id!==selLitter?l:{...l,name:t})}));
+    setEditingLitterName(false);
+    toast2(`Cucciolata salvata ✓`);
+  }
+
+  function deleteLitter(){
+    if(!window.confirm('Vuoi davvero eliminare l\'intera cucciolata e tutti i suoi cuccioli? Questa azione è irreversibile.')) return;
+    setData(d=>({...d,litters:d.litters.filter(l=>l.id!==selLitter)}));
+    setEditingLitterName(false);
+    setScreen('home');
+    setSelLitter(null);
+    toast2('Cucciolata eliminata ✓');
+  }
+
+  // ─── styles ───
+  const S={
+    hdr:{background:'#2C3E35',color:'#F0EAD6',padding:'16px 18px 13px',display:'flex',alignItems:'center',gap:12,boxShadow:'0 2px 12px rgba(0,0,0,0.18)',position:'sticky',top:0,zIndex:100},
+    back:{background:'rgba(255,255,255,0.12)',border:'none',color:'#F0EAD6',borderRadius:8,padding:'6px 10px',cursor:'pointer',fontSize:15,fontFamily:'inherit',fontWeight:'bold',display:'flex',alignItems:'center'},
+    ht:{flex:1,fontSize:17,fontWeight:'bold',letterSpacing:'.02em',margin:0},
+    hs:{fontSize:11,opacity:.65,margin:'1px 0 0',fontStyle:'italic'},
+    body:{padding:'14px 14px 88px',flex:1},
+    card:{background:'#fff',borderRadius:16,padding:'13px 15px',marginBottom:11,boxShadow:'0 1px 6px rgba(0,0,0,0.07)',cursor:'pointer',border:'1px solid #EDE8E0'},
+    fab:{position:'fixed',bottom:24,right:24,width:58,height:58,borderRadius:'50%',background:'#2C3E35',color:'#F0EAD6',border:'none',fontSize:28,cursor:'pointer',boxShadow:'0 4px 16px rgba(44,62,53,0.45)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:200},
+    sec:{fontSize:11,fontWeight:'bold',color:'#9A8E80',letterSpacing:'.12em',textTransform:'uppercase',marginBottom:7,marginTop:16},
+    inp:{width:'100%',padding:'11px 13px',borderRadius:10,border:'1.5px solid #DDD8CF',fontSize:16,fontFamily:'inherit',background:'#FEFCF8',color:'#2C3E35',boxSizing:'border-box',outline:'none'},
+    lbl:{fontSize:12,fontWeight:'bold',color:'#7A6E60',letterSpacing:'.08em',textTransform:'uppercase',marginBottom:5,display:'block'},
+    btn:{width:'100%',padding:13,borderRadius:12,background:'#2C3E35',color:'#F0EAD6',border:'none',fontSize:16,fontFamily:'inherit',cursor:'pointer',fontWeight:'bold'},
+    ghost:{background:'none',border:'1.5px solid #2C3E35',color:'#2C3E35'},
+    exportBtn:{background:'rgba(255,255,255,0.12)',border:'none',color:'#F0EAD6',borderRadius:8,padding:'6px 11px',cursor:'pointer',fontSize:12,fontFamily:'inherit',fontWeight:'bold'},
+  };
+
+  // ─────────── HOME ───────────────────────────────────────────────────────────
+  const renderHomeScreen = () => (
+    <>
+      <div style={S.hdr}>
+        <div style={{fontSize:24}}>🐱</div>
+        <div style={{flex:1}}>
+          <p style={S.ht}>Pesate Cucciolate</p>
+          <p style={S.hs}>Il mio allevamento</p>
+        </div>
+      </div>
+      <div style={S.body}>
+        <p style={S.sec}>Cucciolate attive</p>
+        {!data.litters.length&&<div style={{textAlign:'center',color:'#9A8E80',padding:'40px 0',fontSize:15}}>Nessuna cucciolata.<br/><span style={{fontSize:13}}>Premi + per aggiungerne una.</span></div>}
+        {data.litters.map(l=>{
+          const lastDate=l.kittens.flatMap(k=>k.weights).sort((a,b)=>b.date.localeCompare(a.date))[0]?.date;
+          const days=l.birthDate?Math.round((new Date()-new Date(l.birthDate))/86400000):null;
+          return <div key={l.id} style={S.card} onClick={()=>{setSelLitter(l.id);setScreen('litter');}}>
+            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:6}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:16,fontWeight:'bold',color:'#2C3E35'}}>{l.name}</div>
+                {l.mother&&<div style={{fontSize:12,color:'#9A8E80',marginTop:1}}>♀ {l.mother}</div>}
+              </div>
+              {days!==null&&<span style={{padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:'bold',background:'#EDE8E0',color:'#6B5E4E'}}>{days} giorni</span>}
+            </div>
+            <div style={{display:'flex',gap:6,marginTop:7,flexWrap:'wrap'}}>
+              {l.kittens.map(k=><div key={k.id} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
+                <ColorDot colorId={k.colorId} size={20}/>
+                <span style={{fontSize:9,color:'#9A8E80'}}>{k.name}</span>
+              </div>)}
+            </div>
+            <div style={{marginTop:8,fontSize:12,color:'#9A8E80'}}>
+              {l.kittens.length} cuccioli{lastDate&&` · Ultima pesata: ${fmtFull(lastDate)}`}
+            </div>
+          </div>;
+        })}
+      </div>
+      <button style={S.fab} onClick={()=>setScreen('newLitter')}>+</button>
+    </>
+  );
+
+  // ─────────── LITTER ─────────────────────────────────────────────────────────
+  const renderLitterScreen = () => {
+    if(!litter)return null;
+    const days=litter.birthDate?Math.round((new Date()-new Date(litter.birthDate))/86400000):null;
+    return <>
+      <div style={{...S.hdr, alignItems: editingLitterName ? 'flex-start' : 'center'}}>
+        <button style={S.back} onClick={()=>{setScreen('home');setSelLitter(null);setEditingLitterName(false);}}>← Indietro</button>
+        <div style={{flex:1,minWidth:0}}>
+          {editingLitterName
+            ? <div style={{display:'flex', flexDirection:'column', gap: 10, width:'100%'}}>
+                <input ref={litterNameRef} value={litterNameVal} onChange={e=>setLitterNameVal(e.target.value)}
+                  onKeyDown={e=>{if(e.key==='Enter')renameLitter();if(e.key==='Escape')setEditingLitterName(false);}}
+                  style={{background:'rgba(255,255,255,0.15)',border:'none',borderBottom:'2px solid rgba(240,234,214,.8)',
+                    color:'#F0EAD6',fontSize:17,fontWeight:'bold',fontFamily:'inherit',outline:'none',
+                    padding:'2px 4px',width:'100%',minWidth:0,borderRadius:0}}/>
+                <div style={{display:'flex', gap:6}}>
+                  <button onClick={renameLitter} style={{flex:1, background:'#4A8C5C', color:'#fff', border:'none', borderRadius:6, padding:'6px', fontWeight:'bold', fontSize:13, cursor:'pointer'}}>Salva Modifica</button>
+                  <button onClick={deleteLitter} style={{background:'#F44336', color:'#fff', border:'none', borderRadius:6, padding:'6px 10px', fontWeight:'bold', fontSize:13, cursor:'pointer'}}>Elimina</button>
+                  <button onClick={()=>setEditingLitterName(false)} style={{background:'rgba(255,255,255,0.2)', border:'none', color:'rgba(240,234,214,.8)', cursor:'pointer', fontSize:13, borderRadius:6, padding:'6px 10px'}}>Annulla</button>
+                </div>
+              </div>
+            : <div style={{display:'flex',flexDirection:'column'}}>
+                <p style={{...S.ht,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:7,cursor:'pointer',userSelect:'none'}}
+                  onClick={()=>{setLitterNameVal(litter.name);setEditingLitterName(true);}}>
+                  {litter.name}<span style={{fontSize:11,opacity:.45,fontWeight:'normal',fontStyle:'italic',color:'#2A6DB0'}}>✎</span>
+                </p>
+                <p style={S.hs}>{days!==null?`${days}° giorno · `:''}{litter.kittens.length} cuccioli</p>
+              </div>}
+        </div>
+        {!editingLitterName && <button style={{...S.exportBtn}} onClick={()=>setExportTarget('litter')}>📤</button>}
+        {!editingLitterName && <button style={{...S.exportBtn,marginLeft:4}} onClick={()=>{setBulk({__date:todayISO()});setShowBulk(true);}}>📋</button>}
+      </div>
+      <div style={S.body}>
+        {litter.mother&&<div style={{background:'#EDE8E0',borderRadius:10,padding:'8px 12px',marginBottom:14,fontSize:12,color:'#6B5E4E'}}>
+          <span style={{marginRight:10}}>♀ {litter.mother}</span>
+          {litter.father&&<span>♂ {litter.father}</span>}
+          {litter.birthDate&&<span style={{float:'right'}}>📅 {fmtFull(litter.birthDate)}</span>}
+        </div>}
+
+        {litter.kittens.length>0&&<div style={{background:'#fff',borderRadius:14,padding:'13px 11px 11px',border:'1px solid #EDE8E0',marginBottom:4}}>
+          <p style={{...S.sec,marginTop:0}}>Curva di crescita — tutti i cuccioli</p>
+          <LitterChart kittens={litter.kittens} />
+          <div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:10}}>
+            {litter.kittens.map((k,i)=><div key={k.id} style={{display:'flex',alignItems:'center',gap:5,fontSize:11,color:'#5A5048'}}>
+              <div style={{width:16,height:3,borderRadius:2,background:lineColor(k)}}/>
+              {k.name}<GenderBadge gender={k.gender} small/>
+            </div>)}
+          </div>
+        </div>}
+
+        <p style={S.sec}>Cuccioli</p>
+        {litter.kittens.map((k)=>{
+          const sorted=[...k.weights].sort((a,b)=>a.date.localeCompare(b.date));
+          const lastW=sorted.length?sorted[sorted.length-1].weight:null;
+          const gn=gainPct(sorted);const gnN=gn?parseFloat(gn):null;
+          return <div key={k.id} style={S.card} onClick={()=>{setSelKitten(k.id);setScreen('kitten');}}>
+            <div style={{display:'flex',alignItems:'center',gap:12}}>
+              <ColorDot colorId={k.colorId} size={36} onClick={e=>{e?.stopPropagation();setCpTarget({lid:litter.id,kid:k.id,cur:k.colorId});}}/>
+              <div style={{flex:1}}>
+                <div style={{display:'flex',alignItems:'center',gap:6}}>
+                  <span style={{fontSize:16,fontWeight:'bold',color:'#2C3E35'}}>{k.name}</span>
+                  <GenderBadge gender={k.gender}/>
+                </div>
+                <div style={{fontSize:13,color:'#7A6E60',marginTop:3}}>
+                  {lastW?<b>{lastW}g</b>:<span style={{color:'#b0a898'}}>Nessun peso</span>}
+                  {gnN!==null&&<span style={{marginLeft:8,color:gnN>0?'#4A8C5C':'#C0472A',fontSize:12}}>{gnN>0?'▲':'▼'} {Math.abs(gnN)}%</span>}
+                </div>
+              </div>
+              <MiniChart weights={sorted} color={lineColor(k)}/>
+            </div>
+          </div>;
+        })}
+        {!litter.kittens.length&&<div style={{textAlign:'center',color:'#9A8E80',padding:'28px 0'}}>Nessun cucciolo ancora.</div>}
+      </div>
+      <button style={S.fab} onClick={()=>setScreen('newKitten')}>+</button>
+
+      {exportTarget==='litter'&&<ExportMenu
+        onPDF={()=>exportLitterPDF(litter)}
+        onCSV={()=>exportLitterCSV(litter)}
+        onClose={()=>setExportTarget(null)}/>}
+    </>;
+  };
+
+  // ─────────── KITTEN ─────────────────────────────────────────────────────────
+  const renderKittenScreen = () => {
+    if(!kitten||!litter)return null;
+    const sorted=[...kitten.weights].sort((a,b)=>a.date.localeCompare(b.date));
+    const lastW=sorted.length?sorted[sorted.length-1].weight:null;
+    const firstW=sorted.length?sorted[0].weight:null;
+    const totalGain=lastW&&firstW?lastW-firstW:null;
+    const lc=lineColor(kitten);
+    return <>
+      <div style={{...S.hdr, alignItems: editingName ? 'flex-start' : 'center'}}>
+        <button style={S.back} onClick={()=>{setScreen('litter');setSelKitten(null);setEditingName(false);}}>← Indietro</button>
+        <div style={{display:'flex',alignItems: editingName ? 'flex-start' : 'center',gap:10,flex:1,minWidth:0}}>
+          {!editingName && <ColorDot colorId={kitten.colorId} size={28} onClick={()=>setCpTarget({lid:litter.id,kid:kitten.id,cur:kitten.colorId})}/>}
+          <div style={{flex:1,minWidth:0}}>
+            {editingName
+              ? <div style={{display:'flex', flexDirection:'column', gap: 10, width:'100%'}}>
+                  <div style={{display:'flex', gap:6, alignItems:'center'}}>
+                    <input ref={nameRef} value={nameVal} onChange={e=>setNameVal(e.target.value)}
+                      onKeyDown={e=>{if(e.key==='Enter')saveKittenEdits();if(e.key==='Escape')setEditingName(false);}}
+                      style={{background:'rgba(255,255,255,0.15)',border:'none',borderBottom:'2px solid rgba(240,234,214,.8)',
+                        color:'#F0EAD6',fontSize:17,fontWeight:'bold',fontFamily:'inherit',outline:'none',
+                        padding:'2px 4px',width:'100%',minWidth:0,borderRadius:0}}/>
+                    <button onClick={() => setEditGender(g => g==='M'?'F':'M')} 
+                      style={{background:editGender==='M'?'#DDEEFF':'#FFE0EC',color:editGender==='M'?'#2A6DB0':'#C0296A',border:'none',borderRadius:8,padding:'6px 12px',fontWeight:'bold',fontSize:14,cursor:'pointer',flexShrink:0}}>
+                      {editGender === 'M' ? '♂ Maschio' : '♀ Femmina'}
+                    </button>
+                  </div>
+                  <div style={{display:'flex', gap:6}}>
+                    <button onClick={saveKittenEdits} style={{flex:1, background:'#4A8C5C', color:'#fff', border:'none', borderRadius:6, padding:'6px', fontWeight:'bold', fontSize:13, cursor:'pointer'}}>Salva Modifica</button>
+                    <button onClick={deleteKitten} style={{background:'#F44336', color:'#fff', border:'none', borderRadius:6, padding:'6px 10px', fontWeight:'bold', fontSize:13, cursor:'pointer'}}>Elimina</button>
+                    <button onClick={()=>setEditingName(false)} style={{background:'rgba(255,255,255,0.2)', border:'none', color:'rgba(240,234,214,.8)', cursor:'pointer', fontSize:13, borderRadius:6, padding:'6px 10px'}}>Annulla</button>
+                  </div>
+                </div>
+              : <div style={{display:'flex',flexDirection:'column'}}>
+                  <p style={{...S.ht,display:'flex',alignItems:'center',gap:7,cursor:'pointer',userSelect:'none'}}
+                    onClick={()=>{setNameVal(kitten.name);setEditGender(kitten.gender);setEditingName(true);}}>
+                    {kitten.name}<span style={{fontSize:11,opacity:.45,fontWeight:'normal',fontStyle:'italic',color:'#2A6DB0'}}>✎</span>
+                    &nbsp;<GenderBadge gender={kitten.gender}/>
+                  </p>
+                  <p style={S.hs}>{litter.name}</p>
+                </div>}
+          </div>
+        </div>
+        {!editingName && <button style={S.exportBtn} onClick={()=>setExportTarget('kitten')}>📤</button>}
+      </div>
+
+      <div style={S.body}>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:16}}>
+          {[{l:'Peso attuale',v:lastW?`${lastW}g`:'—'},{l:'Guadagno tot.',v:totalGain?`+${totalGain}g`:'—'},{l:'Pesate',v:sorted.length}].map(s=><div key={s.l} style={{background:'#fff',borderRadius:12,padding:'10px 8px',textAlign:'center',border:'1px solid #EDE8E0'}}>
+            <div style={{fontSize:18,fontWeight:'bold',color:'#2C3E35'}}>{s.v}</div>
+            <div style={{fontSize:10,color:'#9A8E80',marginTop:2}}>{s.l}</div>
+          </div>)}
+        </div>
+        <div style={{background:'#fff',borderRadius:14,padding:'13px 11px 10px',border:'1px solid #EDE8E0',marginBottom:15}}>
+          <p style={{...S.sec,marginTop:0}}>Curva di crescita</p>
+          <BigChart weights={sorted} color={lc} />
+        </div>
+        <p style={S.sec}>Storico pesi</p>
+        {!sorted.length&&<div style={{color:'#9A8E80',textAlign:'center',padding:'20px 0'}}>Nessun peso registrato.</div>}
+        {[...sorted].reverse().map((w,i)=>{
+          const prev=sorted[sorted.length-2-i];
+          const delta=prev?w.weight-prev.weight:null;
+          return <div key={w.date} style={{...S.card,cursor:'default',display:'flex',alignItems:'center'}}>
+            <div style={{flex:1}}>
+              <div style={{fontSize:14,color:'#2C3E35',fontWeight:'bold'}}>{fmtFull(w.date)}</div>
+              {litter.birthDate&&<div style={{fontSize:11,color:'#9A8E80'}}>Giorno {dayAge(litter.birthDate,w.date)}</div>}
+            </div>
+            <div style={{textAlign:'right'}}>
+              <div style={{fontSize:18,fontWeight:'bold',color:'#2C3E35'}}>{w.weight}g</div>
+              {delta!==null&&<div style={{fontSize:12,color:delta>=0?'#4A8C5C':'#C0472A'}}>{delta>=0?'+':''}{delta}g</div>}
+            </div>
+            <div style={{display:'flex', gap: 6, marginLeft:12}}>
+              <button onClick={()=>{setWForm({date:w.date, weight:w.weight}); setShowWeight(true);}} style={{background:'#2A6DB0',border:'none',fontSize:12,cursor:'pointer',color:'#fff',padding:'6px 10px', borderRadius:6, fontWeight:'bold'}}>Modifica</button>
+              <button onClick={()=>delWeight(w.date)} style={{background:'#F44336',border:'none',fontSize:12,cursor:'pointer',color:'#fff',padding:'6px 10px', borderRadius:6, fontWeight:'bold'}}>Elimina</button>
+            </div>
+          </div>;
+        })}
+      </div>
+      <button style={S.fab} onClick={()=>{setWForm({date:todayISO(),weight:''});setShowWeight(true);}}>⚖</button>
+
+      {exportTarget==='kitten'&&<ExportMenu
+        onPDF={()=>exportKittenPDF(kitten,litter)}
+        onCSV={()=>exportKittenCSV(kitten,litter)}
+        onClose={()=>setExportTarget(null)}/>}
+    </>;
+  };
+
+  // ─────────── NEW LITTER ─────────────────────────────────────────────────────
+  const renderNewLitterScreen = () => (
+    <>
+      <div style={S.hdr}>
+        <button style={S.back} onClick={()=>setScreen('home')}>← Indietro</button>
+        <div><p style={S.ht}>Nuova cucciolata</p></div>
+      </div>
+      <div style={S.body}>
+        {[{k:'name',l:'Nome cucciolata *',p:'Es. Cucciolata Estate 2025'},{k:'mother',l:'Madre',p:'Nome della madre'},{k:'father',l:'Padre',p:'Nome del padre'}].map(f=><div key={f.k} style={{marginBottom:13}}>
+          <label style={S.lbl}>{f.l}</label>
+          <input style={S.inp} value={newLF[f.k]} onChange={e=>setNewLF({...newLF,[f.k]:e.target.value})} placeholder={f.p}/>
+        </div>)}
+        <div style={{marginBottom:22}}>
+          <label style={S.lbl}>Data di nascita</label>
+          <input style={S.inp} type="date" value={newLF.birthDate} onChange={e=>setNewLF({...newLF,birthDate:e.target.value})}/>
+        </div>
+        <button style={{...S.btn, background: '#4A8C5C'}} onClick={addLitter}>Crea cucciolata</button>
+      </div>
+    </>
+  );
+
+  // ─────────── NEW KITTEN ─────────────────────────────────────────────────────
+  const renderNewKittenScreen = () => (
+    <>
+      <div style={S.hdr}>
+        <button style={S.back} onClick={()=>setScreen('litter')}>← Indietro</button>
+        <div><p style={S.ht}>Nuovo cucciolo</p><p style={S.hs}>{litter?.name}</p></div>
+      </div>
+      <div style={S.body}>
+        <div style={{marginBottom:13}}>
+          <label style={S.lbl}>Nome *</label>
+          <input style={S.inp} value={newKF.name} onChange={e=>setNewKF({...newKF,name:e.target.value})} placeholder="Es. Thor, Luna, Freya…" autoFocus/>
+        </div>
+        <div style={{marginBottom:15}}>
+          <label style={S.lbl}>Sesso</label>
+          <div style={{display:'flex',gap:8}}>
+            {[{l:'♂ Maschio',v:'M'},{l:'♀ Femmina',v:'F'}].map(g=><button key={g.v}
+              style={{flex:1,padding:10,borderRadius:10,border:newKF.gender===g.v?'2px solid #2C3E35':'1.5px solid #DDD8CF',
+                background:newKF.gender===g.v?(g.v==='M'?'#DDEEFF':'#FFE0EC'):'#FEFCF8',
+                color:newKF.gender===g.v?(g.v==='M'?'#2A6DB0':'#C0296A'):'#2C3E35',
+                fontSize:14,cursor:'pointer',fontFamily:'inherit',fontWeight:'bold'}}
+              onClick={()=>setNewKF({...newKF,gender:g.v})}>{g.l}</button>)}
+          </div>
+        </div>
+        <div style={{marginBottom:22}}>
+          <label style={S.lbl}>Colore collarino</label>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(8,1fr)',gap:8,background:'#fff',borderRadius:12,padding:12,border:'1.5px solid #DDD8CF'}}>
+            {COLLAR_COLORS.map(c=>{const sel=newKF.colorId===c,isL=TOO_LIGHT.includes(c)||c==='#FFFFFF';
+              return <button key={c} onClick={()=>setNewKF({...newKF,colorId:c})}
+                style={{width:'100%',aspectRatio:'1/1',borderRadius:'50%',background:c,
+                  border:sel?'3px solid #2C3E35':isL?'2px solid rgba(0,0,0,0.18)':'2px solid rgba(255,255,255,0.2)',
+                  cursor:'pointer',padding:0,position:'relative',
+                  boxShadow:sel?'0 0 0 2px #FAF7F2,0 0 0 4px #2C3E35':'0 1px 3px rgba(0,0,0,0.2)'}}>
+                {sel&&<span style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,color:isL?'#2C3E35':'#fff',fontWeight:'bold'}}>✓</span>}
+              </button>;})}
+          </div>
+        </div>
+        <button style={{...S.btn, background: '#4A8C5C'}} onClick={addKitten}>Aggiungi cucciolo</button>
+      </div>
+    </>
+  );
+
+  // ─────────── RENDER ─────────────────────────────────────────────────────────
+  return <>
+    {screen==='home'&&renderHomeScreen()}
+    {screen==='litter'&&renderLitterScreen()}
+    {screen==='kitten'&&renderKittenScreen()}
+    {screen==='newLitter'&&renderNewLitterScreen()}
+    {screen==='newKitten'&&renderNewKittenScreen()}
+
+    {/* Color picker */}
+    {cpTarget&&<ColorPicker current={cpTarget.cur} onSelect={c=>changeColor(cpTarget.lid,cpTarget.kid,c)} onClose={()=>setCpTarget(null)}/>}
+
+    {/* Weight modal */}
+    {showWeight&&<div style={OV} onClick={()=>setShowWeight(false)}>
+      <div style={MB} onClick={e=>e.stopPropagation()}>
+        <div style={{fontSize:17,fontWeight:'bold',color:'#2C3E35',marginBottom:4}}>⚖️ Registra peso — {kitten?.name}</div>
+        <div style={{fontSize:13,color:'#9A8E80',marginBottom:16}}>
+          {kitten?.weights.length?`Ultimo: ${kitten.weights[kitten.weights.length-1].weight}g`:'Primo peso'}
+        </div>
+        <div style={{marginBottom:13}}><label style={S.lbl}>Data</label>
+          <input style={S.inp} type="date" value={wForm.date} onChange={e=>setWForm({...wForm,date:e.target.value})}/></div>
+        <div style={{marginBottom:22}}><label style={S.lbl}>Peso (grammi)</label>
+          <input ref={wRef} style={{...S.inp,fontSize:32,textAlign:'center',fontWeight:'bold'}}
+            type="number" inputMode="numeric" value={wForm.weight}
+            onChange={e=>setWForm({...wForm,weight:e.target.value})}
+            placeholder="0" onKeyDown={e=>e.key==='Enter'&&addWeight()}/></div>
+        <button style={{...S.btn, background: '#4A8C5C'}} onClick={addWeight}>Salva peso</button>
+      </div>
+    </div>}
+
+    {/* Bulk modal */}
+    {showBulk&&litter&&<div style={OV} onClick={()=>setShowBulk(false)}>
+      <div style={MB} onClick={e=>e.stopPropagation()}>
+        <div style={{fontSize:17,fontWeight:'bold',color:'#2C3E35',marginBottom:14}}>📋 Pesata giornaliera</div>
+        <div style={{marginBottom:14}}><label style={S.lbl}>Data</label>
+          <input style={S.inp} type="date" value={bulk.__date||todayISO()} onChange={e=>setBulk({...bulk,__date:e.target.value})}/></div>
+        {litter.kittens.map(k=><div key={k.id} style={{marginBottom:11,display:'flex',alignItems:'center',gap:10}}>
+          <ColorDot colorId={k.colorId} size={28}/>
+          <div style={{display:'flex',alignItems:'center',gap:5,width:92,flexShrink:0}}>
+            <span style={{fontSize:14,fontWeight:'bold',color:'#2C3E35'}}>{k.name}</span>
+            <GenderBadge gender={k.gender} small/>
+          </div>
+          <input style={{...S.inp,textAlign:'right',fontSize:20,fontWeight:'bold'}}
+            type="number" inputMode="numeric" placeholder="g"
+            value={bulk[k.id]||''} onChange={e=>setBulk({...bulk,[k.id]:e.target.value})}/>
+        </div>)}
+        <div style={{marginTop:18}}>
+          <button style={{...S.btn, background: '#4A8C5C'}} onClick={addBulk}>Salva tutti i pesi</button>
+        </div>
+      </div>
+    </div>}
+
+    {/* Toast */}
+    {toast&&<div style={{position:'fixed',bottom:96,left:'50%',transform:'translateX(-50%)',
+      background:'#2C3E35',color:'#F0EAD6',padding:'10px 22px',borderRadius:24,fontSize:14,
+      zIndex:3000,boxShadow:'0 4px 16px rgba(0,0,0,0.25)',whiteSpace:'nowrap'}}>
+      {toast}
+    </div>}
+  </>;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
