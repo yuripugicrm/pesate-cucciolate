@@ -563,7 +563,7 @@ const btnStyle={width:'100%',padding:'12px 14px',borderRadius:12,border:'none',f
 // MAIN APP
 // ─────────────────────────────────────────────────────────────────────────────
 function App(){
-  const [data,setData]=useState(null); // Init as null to load from cloud first
+  const [data,setData]=useState(null); 
   const [cloudCfg,setCloudCfg]=useState(()=>loadCloudConfig());
   const [showCloud,setShowCloud]=useState(false);
   const [cfgForm,setCfgForm]=useState({url:'',key:''});
@@ -575,7 +575,6 @@ function App(){
   const [showBulk,setShowBulk]=useState(false);
   const [cpTarget,setCpTarget]=useState(null);
   
-  // Naming states
   const [editingName,setEditingName]=useState(false);
   const [nameVal,setNameVal]=useState('');
   const [editGender,setEditGender]=useState('M');
@@ -595,7 +594,7 @@ function App(){
   const litterNameRef=useRef(null);
   const firstRender=useRef(true);
 
-  function toast2(msg){setToast(msg);setTimeout(()=>setToast(null),2200);}
+  function toast2(msg){setToast(msg);setTimeout(()=>setToast(null),3500);} // Aumentato il tempo per poter leggere bene gli errori
 
   // --- CLOUD LOAD & SAVE LOGIC ---
   useEffect(() => {
@@ -603,22 +602,26 @@ function App(){
     async function init() {
       if (cloudCfg && cloudCfg.url && cloudCfg.key) {
          try {
-           const res = await fetch(`${cloudCfg.url}/rest/v1/allevamento_db?id=eq.1&select=data_json`, {
+           const cleanUrl = cloudCfg.url.trim().replace(/\/+$/, '');
+           const res = await fetch(`${cleanUrl}/rest/v1/allevamento_db?id=eq.1&select=data_json`, {
              headers: { 'apikey': cloudCfg.key, 'Authorization': `Bearer ${cloudCfg.key}` }
            });
            if (res.ok) {
              const rows = await res.json();
              if (rows && rows.length > 0 && rows[0].data_json && rows[0].data_json.litters) {
                if(isMounted) setData(rows[0].data_json);
-               return; // Load success
+               return; 
              }
+           } else {
+             const err = await res.text();
+             if(isMounted) toast2(`Errore Lettura: ${res.status} - Controlla i permessi RLS`);
+             console.error("Supabase Read Error:", err);
            }
          } catch (e) {
            console.error(e);
-           if(isMounted) toast2("Cloud offline, uso dati locali");
+           if(isMounted) toast2("Cloud offline: impossibile connettersi all'URL");
          }
       }
-      // Fallback
       if(isMounted) setData(loadData() || DEMO_DATA);
     }
     init();
@@ -633,11 +636,27 @@ function App(){
     }
     saveData(data); // Local backup
     if (cloudCfg && cloudCfg.url && cloudCfg.key) {
-      fetch(`${cloudCfg.url}/rest/v1/allevamento_db?id=eq.1`, {
-         method: 'PATCH',
-         headers: { 'apikey': cloudCfg.key, 'Authorization': `Bearer ${cloudCfg.key}`, 'Content-Type': 'application/json' },
-         body: JSON.stringify({ data_json: data })
-      }).catch(e => console.error(e));
+      const cleanUrl = cloudCfg.url.trim().replace(/\/+$/, '');
+      // Usa UPSERT tramite POST (crea la riga 1 se non esiste, o la aggiorna)
+      fetch(`${cleanUrl}/rest/v1/allevamento_db`, {
+         method: 'POST',
+         headers: { 
+           'apikey': cloudCfg.key, 
+           'Authorization': `Bearer ${cloudCfg.key}`, 
+           'Content-Type': 'application/json',
+           'Prefer': 'resolution=merge-duplicates'
+         },
+         body: JSON.stringify({ id: 1, data_json: data })
+      }).then(async res => {
+          if (!res.ok) {
+             const errText = await res.text();
+             toast2(`Errore Salvataggio: ${res.status}. RLS attivo?`);
+             console.error("Supabase Save Error:", errText);
+          }
+      }).catch(e => {
+          console.error(e);
+          toast2("Errore di rete durante il salvataggio sul Cloud");
+      });
     }
   }, [data, cloudCfg]);
 
@@ -659,10 +678,10 @@ function App(){
     if(!c.url || !c.key) return;
     localStorage.setItem(CLOUD_KEY, JSON.stringify(c));
     setCloudCfg(c);
-    setData(null); // Force reload
+    setData(null); 
     firstRender.current = true;
     setShowCloud(false);
-    toast2("Cloud collegato e in download...");
+    toast2("Cloud collegato! Controllo in corso...");
   }
   function disconnectCloud() {
     localStorage.removeItem(CLOUD_KEY);
@@ -771,7 +790,6 @@ function App(){
     exportBtn:{background:'rgba(255,255,255,0.12)',border:'none',color:'#F0EAD6',borderRadius:8,padding:'6px 11px',cursor:'pointer',fontSize:12,fontFamily:'inherit',fontWeight:'bold'},
   };
 
-  // Wait for cloud load
   if (!data) return null;
 
   // ─────────── HOME ───────────────────────────────────────────────────────────
