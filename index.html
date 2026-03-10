@@ -16,9 +16,29 @@
   input:focus{border-color:#2C3E35!important;outline:none}
   button:active{opacity:.8}
   ::-webkit-scrollbar{display:none}
-  #root{max-width:420px;margin:0 auto;min-height:100dvh;background:#FAF7F2;display:flex;flex-direction:column}
+  
+  /* Contenitore principale allargato per PC */
+  #root{max-width:1200px;margin:0 auto;min-height:100dvh;background:#FAF7F2;display:flex;flex-direction:column;position:relative;box-shadow:0 0 20px rgba(0,0,0,0.05)}
+  
   .spin{animation:spin 1s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* Classi Responsive */
+  .grid-list { display: grid; grid-template-columns: 1fr; gap: 12px; }
+  .desktop-row { display: flex; flex-direction: column; gap: 16px; }
+  .desktop-col { flex: 1; min-width: 0; }
+  
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: flex-end; justify-content: center; }
+  .modal-box { background: #FAF7F2; border-radius: 20px 20px 0 0; padding: 24px 20px 36px; width: 100%; max-width: 420px; max-height: 88vh; overflow-y: auto; }
+
+  /* Adattamento per schermi PC (Tablet e Desktop) */
+  @media (min-width: 768px) {
+    .grid-list { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+    .desktop-row { flex-direction: row; align-items: flex-start; gap: 32px; }
+    .sticky-col { position: sticky; top: 90px; }
+    .modal-overlay { align-items: center; }
+    .modal-box { border-radius: 20px; padding-bottom: 24px; max-height: 85vh; }
+  }
 </style>
 </head>
 <body>
@@ -413,8 +433,8 @@ function ColorDot({colorId,size=24,onClick}){
 }
 
 function ColorPicker({current,onSelect,onClose}){
-  return <div style={OV} onClick={onClose}>
-    <div style={{...MB,paddingBottom:44}} onClick={e=>e.stopPropagation()}>
+  return <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-box" onClick={e=>e.stopPropagation()}>
       <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}>
         <span style={{fontSize:20}}>🎀</span>
         <span style={{fontSize:17,fontWeight:'bold',color:'#2C3E35'}}>Colore collarino</span>
@@ -533,8 +553,8 @@ function BigChart({weights,color}){
 
 // Export menu component
 function ExportMenu({onPDF,onCSV,onClose}){
-  return <div style={{...OV,alignItems:'flex-end'}} onClick={onClose}>
-    <div style={{...MB,paddingBottom:36}} onClick={e=>e.stopPropagation()}>
+  return <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-box" onClick={e=>e.stopPropagation()}>
       <p style={{fontSize:15,fontWeight:'bold',color:'#2C3E35',marginBottom:16}}>📤 Esporta dati</p>
       <button onClick={()=>{onPDF();onClose();}} style={{...btnStyle,background:'#2C3E35',color:'#F0EAD6',marginBottom:10,display:'flex',alignItems:'center',justifyContent:'center',gap:10}}>
         <span style={{fontSize:20}}>📄</span>
@@ -554,9 +574,6 @@ function ExportMenu({onPDF,onCSV,onClose}){
   </div>;
 }
 
-// shared modal/overlay CSS-in-JS
-const OV={position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1000,display:'flex',alignItems:'flex-end',justifyContent:'center'};
-const MB={background:'#FAF7F2',borderRadius:'20px 20px 0 0',padding:'24px 20px 36px',width:'100%',maxWidth:420,maxHeight:'88vh',overflowY:'auto'};
 const btnStyle={width:'100%',padding:'12px 14px',borderRadius:12,border:'none',fontSize:15,fontFamily:'inherit',cursor:'pointer',fontWeight:'bold',letterSpacing:'.02em'};
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -594,7 +611,7 @@ function App(){
   const litterNameRef=useRef(null);
   const firstRender=useRef(true);
 
-  function toast2(msg){setToast(msg);setTimeout(()=>setToast(null),3500);} // Aumentato il tempo per poter leggere bene gli errori
+  function toast2(msg){setToast(msg);setTimeout(()=>setToast(null),3500);}
 
   // --- CLOUD LOAD & SAVE LOGIC ---
   useEffect(() => {
@@ -637,7 +654,6 @@ function App(){
     saveData(data); // Local backup
     if (cloudCfg && cloudCfg.url && cloudCfg.key) {
       const cleanUrl = cloudCfg.url.trim().replace(/\/+$/, '');
-      // Usa UPSERT tramite POST (crea la riga 1 se non esiste, o la aggiorna)
       fetch(`${cleanUrl}/rest/v1/allevamento_db`, {
          method: 'POST',
          headers: { 
@@ -780,7 +796,7 @@ function App(){
     ht:{flex:1,fontSize:17,fontWeight:'bold',letterSpacing:'.02em',margin:0},
     hs:{fontSize:11,opacity:.65,margin:'1px 0 0',fontStyle:'italic'},
     body:{padding:'14px 14px 88px',flex:1},
-    card:{background:'#fff',borderRadius:16,padding:'13px 15px',marginBottom:11,boxShadow:'0 1px 6px rgba(0,0,0,0.07)',cursor:'pointer',border:'1px solid #EDE8E0'},
+    card:{background:'#fff',borderRadius:16,padding:'13px 15px',boxShadow:'0 1px 6px rgba(0,0,0,0.07)',cursor:'pointer',border:'1px solid #EDE8E0',height:'100%'},
     fab:{position:'fixed',bottom:24,right:24,width:58,height:58,borderRadius:'50%',background:'#2C3E35',color:'#F0EAD6',border:'none',fontSize:28,cursor:'pointer',boxShadow:'0 4px 16px rgba(44,62,53,0.45)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:200},
     sec:{fontSize:11,fontWeight:'bold',color:'#9A8E80',letterSpacing:'.12em',textTransform:'uppercase',marginBottom:7,marginTop:16},
     inp:{width:'100%',padding:'11px 13px',borderRadius:10,border:'1.5px solid #DDD8CF',fontSize:16,fontFamily:'inherit',background:'#FEFCF8',color:'#2C3E35',boxSizing:'border-box',outline:'none'},
@@ -808,28 +824,31 @@ function App(){
       <div style={S.body}>
         <p style={S.sec}>Cucciolate attive</p>
         {!data.litters.length&&<div style={{textAlign:'center',color:'#9A8E80',padding:'40px 0',fontSize:15}}>Nessuna cucciolata.<br/><span style={{fontSize:13}}>Premi + per aggiungerne una.</span></div>}
-        {data.litters.map(l=>{
-          const lastDate=l.kittens.flatMap(k=>k.weights).sort((a,b)=>b.date.localeCompare(a.date))[0]?.date;
-          const days=l.birthDate?Math.round((new Date()-new Date(l.birthDate))/86400000):null;
-          return <div key={l.id} style={S.card} onClick={()=>{setSelLitter(l.id);setScreen('litter');}}>
-            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:6}}>
-              <div style={{flex:1}}>
-                <div style={{fontSize:16,fontWeight:'bold',color:'#2C3E35'}}>{l.name}</div>
-                {l.mother&&<div style={{fontSize:12,color:'#9A8E80',marginTop:1}}>♀ {l.mother}</div>}
+        
+        <div className="grid-list">
+          {data.litters.map(l=>{
+            const lastDate=l.kittens.flatMap(k=>k.weights).sort((a,b)=>b.date.localeCompare(a.date))[0]?.date;
+            const days=l.birthDate?Math.round((new Date()-new Date(l.birthDate))/86400000):null;
+            return <div key={l.id} style={S.card} onClick={()=>{setSelLitter(l.id);setScreen('litter');}}>
+              <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:6}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:16,fontWeight:'bold',color:'#2C3E35'}}>{l.name}</div>
+                  {l.mother&&<div style={{fontSize:12,color:'#9A8E80',marginTop:1}}>♀ {l.mother}</div>}
+                </div>
+                {days!==null&&<span style={{padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:'bold',background:'#EDE8E0',color:'#6B5E4E'}}>{days} giorni</span>}
               </div>
-              {days!==null&&<span style={{padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:'bold',background:'#EDE8E0',color:'#6B5E4E'}}>{days} giorni</span>}
-            </div>
-            <div style={{display:'flex',gap:6,marginTop:7,flexWrap:'wrap'}}>
-              {l.kittens.map(k=><div key={k.id} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
-                <ColorDot colorId={k.colorId} size={20}/>
-                <span style={{fontSize:9,color:'#9A8E80'}}>{k.name}</span>
-              </div>)}
-            </div>
-            <div style={{marginTop:8,fontSize:12,color:'#9A8E80'}}>
-              {l.kittens.length} cuccioli{lastDate&&` · Ultima pesata: ${fmtFull(lastDate)}`}
-            </div>
-          </div>;
-        })}
+              <div style={{display:'flex',gap:6,marginTop:7,flexWrap:'wrap'}}>
+                {l.kittens.map(k=><div key={k.id} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
+                  <ColorDot colorId={k.colorId} size={20}/>
+                  <span style={{fontSize:9,color:'#9A8E80'}}>{k.name}</span>
+                </div>)}
+              </div>
+              <div style={{marginTop:8,fontSize:12,color:'#9A8E80'}}>
+                {l.kittens.length} cuccioli{lastDate&&` · Ultima pesata: ${fmtFull(lastDate)}`}
+              </div>
+            </div>;
+          })}
+        </div>
       </div>
       <button style={S.fab} onClick={()=>setScreen('newLitter')}>+</button>
     </>
@@ -867,6 +886,7 @@ function App(){
         {!editingLitterName && <button style={{...S.exportBtn}} onClick={()=>setExportTarget('litter')}>📤</button>}
         {!editingLitterName && <button style={{...S.exportBtn,marginLeft:4}} onClick={()=>{setBulk({__date:todayISO(), __time:todayTime()});setShowBulk(true);}}>📋</button>}
       </div>
+      
       <div style={S.body}>
         {litter.mother&&<div style={{background:'#EDE8E0',borderRadius:10,padding:'8px 12px',marginBottom:14,fontSize:12,color:'#6B5E4E'}}>
           <span style={{marginRight:10}}>♀ {litter.mother}</span>
@@ -874,7 +894,7 @@ function App(){
           {litter.birthDate&&<span style={{float:'right'}}>📅 {fmtFull(litter.birthDate)}</span>}
         </div>}
 
-        {litter.kittens.length>0&&<div style={{background:'#fff',borderRadius:14,padding:'13px 11px 11px',border:'1px solid #EDE8E0',marginBottom:4}}>
+        {litter.kittens.length>0&&<div style={{background:'#fff',borderRadius:14,padding:'13px 11px 11px',border:'1px solid #EDE8E0',marginBottom:14}}>
           <p style={{...S.sec,marginTop:0}}>Curva di crescita — tutti i cuccioli</p>
           <LitterChart kittens={litter.kittens} />
           <div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:10}}>
@@ -886,27 +906,29 @@ function App(){
         </div>}
 
         <p style={S.sec}>Cuccioli</p>
-        {litter.kittens.map((k)=>{
-          const sorted=sortWeights(k.weights);
-          const lastW=sorted.length?sorted[sorted.length-1].weight:null;
-          const gnN=gainGrams(sorted);
-          return <div key={k.id} style={S.card} onClick={()=>{setSelKitten(k.id);setScreen('kitten');}}>
-            <div style={{display:'flex',alignItems:'center',gap:12}}>
-              <ColorDot colorId={k.colorId} size={36} onClick={e=>{e?.stopPropagation();setCpTarget({lid:litter.id,kid:k.id,cur:k.colorId});}}/>
-              <div style={{flex:1}}>
-                <div style={{display:'flex',alignItems:'center',gap:6}}>
-                  <span style={{fontSize:16,fontWeight:'bold',color:'#2C3E35'}}>{k.name}</span>
-                  <GenderBadge gender={k.gender}/>
+        <div className="grid-list">
+          {litter.kittens.map((k)=>{
+            const sorted=sortWeights(k.weights);
+            const lastW=sorted.length?sorted[sorted.length-1].weight:null;
+            const gnN=gainGrams(sorted);
+            return <div key={k.id} style={S.card} onClick={()=>{setSelKitten(k.id);setScreen('kitten');}}>
+              <div style={{display:'flex',alignItems:'center',gap:12}}>
+                <ColorDot colorId={k.colorId} size={36} onClick={e=>{e?.stopPropagation();setCpTarget({lid:litter.id,kid:k.id,cur:k.colorId});}}/>
+                <div style={{flex:1}}>
+                  <div style={{display:'flex',alignItems:'center',gap:6}}>
+                    <span style={{fontSize:16,fontWeight:'bold',color:'#2C3E35'}}>{k.name}</span>
+                    <GenderBadge gender={k.gender}/>
+                  </div>
+                  <div style={{fontSize:13,color:'#7A6E60',marginTop:3}}>
+                    {lastW?<b>{lastW}g</b>:<span style={{color:'#b0a898'}}>Nessun peso</span>}
+                    {gnN!==null&&<span style={{marginLeft:8,color:gnN>=0?'#4A8C5C':'#C0472A',fontSize:12}}>{gnN>=0?'▲ +':'▼ '}{gnN}g</span>}
+                  </div>
                 </div>
-                <div style={{fontSize:13,color:'#7A6E60',marginTop:3}}>
-                  {lastW?<b>{lastW}g</b>:<span style={{color:'#b0a898'}}>Nessun peso</span>}
-                  {gnN!==null&&<span style={{marginLeft:8,color:gnN>=0?'#4A8C5C':'#C0472A',fontSize:12}}>{gnN>=0?'▲ +':'▼ '}{gnN}g</span>}
-                </div>
+                <MiniChart weights={sorted} color={lineColor(k)}/>
               </div>
-              <MiniChart weights={sorted} color={lineColor(k)}/>
-            </div>
-          </div>;
-        })}
+            </div>;
+          })}
+        </div>
         {!litter.kittens.length&&<div style={{textAlign:'center',color:'#9A8E80',padding:'28px 0'}}>Nessun cucciolo ancora.</div>}
       </div>
       <button style={S.fab} onClick={()=>setScreen('newKitten')}>+</button>
@@ -965,36 +987,43 @@ function App(){
       </div>
 
       <div style={S.body}>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:16}}>
-          {[{l:'Peso attuale',v:lastW?`${lastW}g`:'—'},{l:'Guadagno tot.',v:totalGain?`+${totalGain}g`:'—'},{l:'Pesate',v:sorted.length}].map(s=><div key={s.l} style={{background:'#fff',borderRadius:12,padding:'10px 8px',textAlign:'center',border:'1px solid #EDE8E0'}}>
-            <div style={{fontSize:18,fontWeight:'bold',color:'#2C3E35'}}>{s.v}</div>
-            <div style={{fontSize:10,color:'#9A8E80',marginTop:2}}>{s.l}</div>
-          </div>)}
+        <div className="desktop-row">
+          <div className="desktop-col sticky-col">
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:16}}>
+              {[{l:'Peso attuale',v:lastW?`${lastW}g`:'—'},{l:'Guadagno tot.',v:totalGain?`+${totalGain}g`:'—'},{l:'Pesate',v:sorted.length}].map(s=><div key={s.l} style={{background:'#fff',borderRadius:12,padding:'10px 8px',textAlign:'center',border:'1px solid #EDE8E0'}}>
+                <div style={{fontSize:18,fontWeight:'bold',color:'#2C3E35'}}>{s.v}</div>
+                <div style={{fontSize:10,color:'#9A8E80',marginTop:2}}>{s.l}</div>
+              </div>)}
+            </div>
+            <div style={{background:'#fff',borderRadius:14,padding:'13px 11px 10px',border:'1px solid #EDE8E0',marginBottom:15}}>
+              <p style={{...S.sec,marginTop:0}}>Curva di crescita</p>
+              <BigChart weights={sorted} color={lc} />
+            </div>
+          </div>
+          
+          <div className="desktop-col">
+            <p style={{...S.sec, marginTop: 0}}>Storico pesi</p>
+            {!sorted.length&&<div style={{color:'#9A8E80',textAlign:'center',padding:'20px 0'}}>Nessun peso registrato.</div>}
+            {[...sorted].reverse().map((w,i)=>{
+              const prev=sorted[sorted.length-2-i];
+              const delta=prev?(w.weight-prev.weight).toFixed(1):null;
+              return <div key={w.date+(w.time||'12:00')} style={{...S.card, marginBottom:11, cursor:'default',display:'flex',alignItems:'center'}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:14,color:'#2C3E35',fontWeight:'bold'}}>{fmtFull(w.date)} {w.time&&<span style={{fontSize:12,fontWeight:'normal',color:'#9A8E80'}}>ore {w.time}</span>}</div>
+                  {litter.birthDate&&<div style={{fontSize:11,color:'#9A8E80'}}>Giorno {dayAge(litter.birthDate,w.date)}</div>}
+                </div>
+                <div style={{textAlign:'right'}}>
+                  <div style={{fontSize:18,fontWeight:'bold',color:'#2C3E35'}}>{w.weight}g</div>
+                  {delta!==null&&<div style={{fontSize:12,color:delta>=0?'#4A8C5C':'#C0472A'}}>{delta>=0?'+':''}{delta}g</div>}
+                </div>
+                <div style={{display:'flex', gap: 6, marginLeft:12}}>
+                  <button onClick={()=>{setWForm({date:w.date, time:w.time||'12:00', weight:w.weight, origDate:w.date, origTime:w.time||'12:00'}); setShowWeight(true);}} style={{background:'#2A6DB0',border:'none',fontSize:12,cursor:'pointer',color:'#fff',padding:'6px 10px', borderRadius:6, fontWeight:'bold'}}>Modifica</button>
+                  <button onClick={()=>delWeight(w.date, w.time)} style={{background:'#F44336',border:'none',fontSize:12,cursor:'pointer',color:'#fff',padding:'6px 10px', borderRadius:6, fontWeight:'bold'}}>Elimina</button>
+                </div>
+              </div>;
+            })}
+          </div>
         </div>
-        <div style={{background:'#fff',borderRadius:14,padding:'13px 11px 10px',border:'1px solid #EDE8E0',marginBottom:15}}>
-          <p style={{...S.sec,marginTop:0}}>Curva di crescita</p>
-          <BigChart weights={sorted} color={lc} />
-        </div>
-        <p style={S.sec}>Storico pesi</p>
-        {!sorted.length&&<div style={{color:'#9A8E80',textAlign:'center',padding:'20px 0'}}>Nessun peso registrato.</div>}
-        {[...sorted].reverse().map((w,i)=>{
-          const prev=sorted[sorted.length-2-i];
-          const delta=prev?(w.weight-prev.weight).toFixed(1):null;
-          return <div key={w.date+(w.time||'12:00')} style={{...S.card,cursor:'default',display:'flex',alignItems:'center'}}>
-            <div style={{flex:1}}>
-              <div style={{fontSize:14,color:'#2C3E35',fontWeight:'bold'}}>{fmtFull(w.date)} {w.time&&<span style={{fontSize:12,fontWeight:'normal',color:'#9A8E80'}}>ore {w.time}</span>}</div>
-              {litter.birthDate&&<div style={{fontSize:11,color:'#9A8E80'}}>Giorno {dayAge(litter.birthDate,w.date)}</div>}
-            </div>
-            <div style={{textAlign:'right'}}>
-              <div style={{fontSize:18,fontWeight:'bold',color:'#2C3E35'}}>{w.weight}g</div>
-              {delta!==null&&<div style={{fontSize:12,color:delta>=0?'#4A8C5C':'#C0472A'}}>{delta>=0?'+':''}{delta}g</div>}
-            </div>
-            <div style={{display:'flex', gap: 6, marginLeft:12}}>
-              <button onClick={()=>{setWForm({date:w.date, time:w.time||'12:00', weight:w.weight, origDate:w.date, origTime:w.time||'12:00'}); setShowWeight(true);}} style={{background:'#2A6DB0',border:'none',fontSize:12,cursor:'pointer',color:'#fff',padding:'6px 10px', borderRadius:6, fontWeight:'bold'}}>Modifica</button>
-              <button onClick={()=>delWeight(w.date, w.time)} style={{background:'#F44336',border:'none',fontSize:12,cursor:'pointer',color:'#fff',padding:'6px 10px', borderRadius:6, fontWeight:'bold'}}>Elimina</button>
-            </div>
-          </div>;
-        })}
       </div>
       <button style={S.fab} onClick={()=>{setWForm({date:todayISO(),time:todayTime(),weight:'',origDate:null,origTime:null});setShowWeight(true);}}>⚖</button>
 
@@ -1079,8 +1108,8 @@ function App(){
     {cpTarget&&<ColorPicker current={cpTarget.cur} onSelect={c=>changeColor(cpTarget.lid,cpTarget.kid,c)} onClose={()=>setCpTarget(null)}/>}
 
     {/* Weight modal */}
-    {showWeight&&<div style={OV} onClick={()=>setShowWeight(false)}>
-      <div style={MB} onClick={e=>e.stopPropagation()}>
+    {showWeight&&<div className="modal-overlay" onClick={()=>setShowWeight(false)}>
+      <div className="modal-box" onClick={e=>e.stopPropagation()}>
         <div style={{fontSize:17,fontWeight:'bold',color:'#2C3E35',marginBottom:4}}>⚖️ Registra peso — {kitten?.name}</div>
         <div style={{fontSize:13,color:'#9A8E80',marginBottom:16}}>
           {kitten?.weights.length?`Ultimo: ${kitten.weights[kitten.weights.length-1].weight}g`:'Primo peso'}
@@ -1101,8 +1130,8 @@ function App(){
     </div>}
 
     {/* Bulk modal */}
-    {showBulk&&litter&&<div style={OV} onClick={()=>setShowBulk(false)}>
-      <div style={MB} onClick={e=>e.stopPropagation()}>
+    {showBulk&&litter&&<div className="modal-overlay" onClick={()=>setShowBulk(false)}>
+      <div className="modal-box" onClick={e=>e.stopPropagation()}>
         <div style={{fontSize:17,fontWeight:'bold',color:'#2C3E35',marginBottom:14}}>📋 Pesata giornaliera</div>
         <div style={{display:'flex',gap:10,marginBottom:14}}>
           <div style={{flex:1}}><label style={S.lbl}>Data</label>
@@ -1127,8 +1156,8 @@ function App(){
     </div>}
 
     {/* Cloud Settings Modal */}
-    {showCloud && <div style={OV} onClick={()=>setShowCloud(false)}>
-      <div style={MB} onClick={e=>e.stopPropagation()}>
+    {showCloud && <div className="modal-overlay" onClick={()=>setShowCloud(false)}>
+      <div className="modal-box" onClick={e=>e.stopPropagation()}>
         <div style={{fontSize:17,fontWeight:'bold',color:'#2C3E35',marginBottom:8}}>☁️ Impostazioni Cloud (Supabase)</div>
         <p style={{fontSize:12, color:'#9A8E80', marginBottom:16}}>Inserisci le credenziali del database per attivare il salvataggio sincronizzato e accedere ai dati da qualsiasi dispositivo.</p>
         <div style={{marginBottom:13}}><label style={S.lbl}>Project URL</label>
