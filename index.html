@@ -485,7 +485,10 @@ function LitterChart({kittens}){
   const allVals=kittens.flatMap(k=>k.weights.map(w=>w.weight));
   const mn=Math.min(...allVals),mx=Math.max(...allVals),rng=mx-mn||50;
   const pMin=mn-rng*.12,pMax=mx+rng*.2;
-  const W=320,H=175,PL=40,PR=12,PT=10,PB=28,cw=W-PL-PR,ch=H-PT-PB;
+  
+  // Aumentate le dimensioni del viewBox per rendere testi e linee più proporzionati e fini su schermi grandi
+  const W=400,H=220,PL=35,PR=65,PT=15,PB=25,cw=W-PL-PR,ch=H-PT-PB;
+  
   const toX=dt=>{const i=allDts.indexOf(dt);return allDts.length===1?PL+cw/2:PL+(i/(allDts.length-1))*cw;};
   const toY=v=>PT+ch-((v-pMin)/(pMax-pMin))*ch;
   const step=Math.ceil(allDts.length/6);
@@ -514,9 +517,9 @@ function LitterChart({kittens}){
       const last=s[s.length-1];
       return <g key={k.id}>
         <polygon points={`${pts.join(' ')} ${toX(last.date+'T'+(last.time||'12:00'))},${PT+ch} ${toX(s[0].date+'T'+(s[0].time||'12:00'))},${PT+ch}`} fill={`url(#lc${id})`}/>
-        <polyline points={pts.join(' ')} fill="none" stroke={c} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-        {s.map(w=><circle key={w.date+w.time} cx={toX(w.date+'T'+(w.time||'12:00'))} cy={toY(w.weight)} r="3.2" fill="white" stroke={c} strokeWidth="2"/>)}
-        <text x={toX(last.date+'T'+(last.time||'12:00'))+5} y={toY(last.weight)+3} fontSize="8.5" fontWeight="bold" fill={c}>{k.name}</text>
+        <polyline points={pts.join(' ')} fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+        {s.map(w=><circle key={w.date+w.time} cx={toX(w.date+'T'+(w.time||'12:00'))} cy={toY(w.weight)} r="2.5" fill="white" stroke={c} strokeWidth="1.8"/>)}
+        <text x={toX(last.date+'T'+(last.time||'12:00'))+5} y={toY(last.weight)+3} fontSize="7.5" fontWeight="bold" fill={c}>{k.name}</text>
       </g>;
     })}
   </svg>;
@@ -527,7 +530,10 @@ function BigChart({weights,color}){
   const vals=weights.map(w=>w.weight);
   const mn=Math.min(...vals),mx=Math.max(...vals),rng=mx-mn||50;
   const pMin=mn-rng*.12,pMax=mx+rng*.12;
-  const W=300,H=140,PL=40,PR=10,PT=10,PB=24,cw=W-PL-PR,ch=H-PT-PB;
+  
+  // Aumentate dimensioni viewBox per mantenere finezza linee su PC
+  const W=400,H=200,PL=35,PR=20,PT=15,PB=25,cw=W-PL-PR,ch=H-PT-PB;
+  
   const toX=i=>PL+(i/Math.max(vals.length-1,1))*cw;
   const toY=v=>PT+ch-((v-pMin)/(pMax-pMin))*ch;
   const pts=vals.map((v,i)=>`${toX(i)},${toY(v)}`).join(' ');
@@ -538,13 +544,13 @@ function BigChart({weights,color}){
     </linearGradient></defs>
     {[mn,mn+rng/2,mx].map((v,i)=><g key={i}>
       <line x1={PL} y1={toY(v)} x2={W-PR} y2={toY(v)} stroke="#e0ddd6" strokeWidth="1" strokeDasharray="3,3"/>
-      <text x={PL-4} y={toY(v)+4} textAnchor="end" fontSize="9" fill="#a09888">{Math.round(v)}</text>
+      <text x={PL-4} y={toY(v)+3.5} textAnchor="end" fontSize="8.5" fill="#a09888">{Math.round(v)}</text>
     </g>)}
     <polygon points={`${pts} ${toX(vals.length-1)},${PT+ch} ${PL},${PT+ch}`} fill={`url(#bc${id})`}/>
-    <polyline points={pts} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+    <polyline points={pts} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
     {vals.map((v,i)=><g key={i}>
-      <circle cx={toX(i)} cy={toY(v)} r="4" fill="white" stroke={color} strokeWidth="2"/>
-      {weights[i]&&<text x={toX(i)} y={H-4} textAnchor="middle" fontSize="8" fill="#a09888">
+      <circle cx={toX(i)} cy={toY(v)} r="3" fill="white" stroke={color} strokeWidth="2"/>
+      {weights[i]&&<text x={toX(i)} y={H-4} textAnchor="middle" fontSize="8.5" fill="#a09888">
         {fmtShort(weights[i].date)}
       </text>}
     </g>)}
@@ -897,12 +903,7 @@ function App(){
         {litter.kittens.length>0&&<div style={{background:'#fff',borderRadius:14,padding:'13px 11px 11px',border:'1px solid #EDE8E0',marginBottom:14}}>
           <p style={{...S.sec,marginTop:0}}>Curva di crescita — tutti i cuccioli</p>
           <LitterChart kittens={litter.kittens} />
-          <div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:10}}>
-            {litter.kittens.map((k,i)=><div key={k.id} style={{display:'flex',alignItems:'center',gap:5,fontSize:11,color:'#5A5048'}}>
-              <div style={{width:16,height:3,borderRadius:2,background:lineColor(k)}}/>
-              {k.name}<GenderBadge gender={k.gender} small/>
-            </div>)}
-          </div>
+          {/* Legenda inferiore rimossa come richiesto */}
         </div>}
 
         <p style={S.sec}>Cuccioli</p>
