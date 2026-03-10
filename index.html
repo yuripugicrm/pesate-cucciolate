@@ -129,7 +129,12 @@ function drawKittenCanvas(weights,color,W=500,H=220){
   if(!vals.length){ctx.fillStyle='#fff';ctx.fillRect(0,0,W,H);return c.toDataURL();}
   const mn=Math.min(...vals),mx=Math.max(...vals),rng=mx-mn||50;
   const pMin=mn-rng*.12,pMax=mx+rng*.12;
-  const toX=i=>PL+(i/Math.max(vals.length-1,1))*cw;
+  
+  // Scala basata sul tempo reale
+  const tVals = weights.map(w=>new Date(w.date+'T'+(w.time||'12:00')).getTime());
+  const tMin = Math.min(...tVals), tMax = Math.max(...tVals);
+  const toX = i => tMin===tMax ? PL+cw/2 : PL+((tVals[i]-tMin)/(tMax-tMin))*cw;
+  
   const toY=v=>PT+ch-((v-pMin)/(pMax-pMin))*ch;
   ctx.fillStyle='#FEFCF8';ctx.fillRect(0,0,W,H);
   
@@ -156,9 +161,12 @@ function drawKittenCanvas(weights,color,W=500,H=220){
   vals.forEach((v,i)=>{
     ctx.beginPath();ctx.arc(toX(i),toY(v),4,0,Math.PI*2);
     ctx.fillStyle='#fff';ctx.fill();ctx.strokeStyle=color;ctx.lineWidth=2;ctx.stroke();
-    const lbl=fmtShort(weights[i].date);
-    ctx.fillStyle='#a09888';ctx.font='9px system-ui';ctx.textAlign='center';
-    ctx.fillText(lbl,toX(i),H-4);
+    // Mostra data solo se è diversa dalla precedente
+    if(i===0 || weights[i].date !== weights[i-1].date){
+      const lbl=fmtShort(weights[i].date);
+      ctx.fillStyle='#a09888';ctx.font='9px system-ui';ctx.textAlign='center';
+      ctx.fillText(lbl,toX(i),H-4);
+    }
   });
   return c.toDataURL('image/png');
 }
@@ -174,7 +182,12 @@ function drawLitterCanvas(kittens,W=520,H=240){
   const PL=52,PR=55,PT=12,PB=32,cw=W-PL-PR,ch=H-PT-PB;
   const mn=Math.min(...allVals),mx=Math.max(...allVals),rng=mx-mn||50;
   const pMin=mn-rng*.12,pMax=mx+rng*.2;
-  const toX=dt=>{const i=allDts.indexOf(dt);return allDts.length===1?PL+cw/2:PL+(i/(allDts.length-1))*cw;};
+  
+  // Scala basata sul tempo reale
+  const tVals = allDts.map(dt=>new Date(dt).getTime());
+  const tMin = Math.min(...tVals), tMax = Math.max(...tVals);
+  const toX = dt => tMin===tMax ? PL+cw/2 : PL+((new Date(dt).getTime()-tMin)/(tMax-tMin))*cw;
+  
   const toY=v=>PT+ch-((v-pMin)/(pMax-pMin))*ch;
   
   ctx.strokeStyle='#e0dcd4';ctx.lineWidth=.8;ctx.setLineDash([4,4]);
@@ -185,14 +198,18 @@ function drawLitterCanvas(kittens,W=520,H=240){
     ctx.fillText(Math.round(v)+'g',PL-4,y+3);
   });
   ctx.setLineDash([]);
-  const step=Math.ceil(allDts.length/6);
-  allDts.forEach((dt,i)=>{
-    if(i%step!==0&&i!==allDts.length-1)return;
-    const d=dt.split('T')[0];
-    const lbl=fmtShort(d);
+  
+  // Etichette asse X (solo date uniche)
+  const uniqueDates = [...new Set(allDts.map(dt => dt.split('T')[0]))];
+  const step = Math.ceil(uniqueDates.length / 6);
+  uniqueDates.forEach((d, i) => {
+    if (i % step !== 0 && i !== uniqueDates.length - 1) return;
+    const firstDt = allDts.find(dt => dt.startsWith(d));
+    const lbl = fmtShort(d);
     ctx.fillStyle='#a09888';ctx.font='9px system-ui';ctx.textAlign='center';
-    ctx.fillText(lbl,toX(dt),H-4);
+    ctx.fillText(lbl, toX(firstDt), H - 4);
   });
+  
   kittens.forEach((k)=>{
     const sorted=sortWeights(k.weights);
     if(!sorted.length)return;
@@ -465,7 +482,13 @@ function MiniChart({weights,color}){
   const vals=weights.map(w=>w.weight);
   const mn=Math.min(...vals)*.97,mx=Math.max(...vals)*1.03;
   const W=90,H=32;
-  const pts=vals.map((v,i)=>`${(i/(vals.length-1))*W},${H-((v-mn)/(mx-mn))*H}`);
+  
+  // Scala basata sul tempo reale
+  const tVals=weights.map(w=>new Date(w.date+'T'+(w.time||'12:00')).getTime());
+  const tMin=Math.min(...tVals), tMax=Math.max(...tVals);
+  const toX=i=>tMin===tMax ? W/2 : ((tVals[i]-tMin)/(tMax-tMin))*W;
+  
+  const pts=vals.map((v,i)=>`${toX(i)},${H-((v-mn)/(mx-mn))*H}`);
   const id=color.replace(/[^a-z0-9]/gi,'_');
   return <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{overflow:'visible'}}>
     <defs><linearGradient id={`ms${id}`} x1="0" x2="0" y1="0" y2="1">
@@ -486,12 +509,16 @@ function LitterChart({kittens}){
   const mn=Math.min(...allVals),mx=Math.max(...allVals),rng=mx-mn||50;
   const pMin=mn-rng*.12,pMax=mx+rng*.2;
   
-  // Aumentate le dimensioni del viewBox per rendere testi e linee più proporzionati e fini su schermi grandi
+  // Aumentata risoluzione viewBox per linee più fini su PC e margine destro (PR) aumentato per i nomi lunghi
   const W=400,H=220,PL=35,PR=65,PT=15,PB=25,cw=W-PL-PR,ch=H-PT-PB;
   
-  const toX=dt=>{const i=allDts.indexOf(dt);return allDts.length===1?PL+cw/2:PL+(i/(allDts.length-1))*cw;};
+  // Scala basata sul tempo reale per raggruppare le pesate dello stesso giorno
+  const tVals = allDts.map(dt=>new Date(dt).getTime());
+  const tMin = Math.min(...tVals), tMax = Math.max(...tVals);
+  const toX = dt => tMin===tMax ? PL+cw/2 : PL+((new Date(dt).getTime()-tMin)/(tMax-tMin))*cw;
+  
   const toY=v=>PT+ch-((v-pMin)/(pMax-pMin))*ch;
-  const step=Math.ceil(allDts.length/6);
+  
   return <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{overflow:'visible',display:'block'}}>
     <defs>{kittens.map((k)=>{const c=lineColor(k),id=c.replace(/[^a-z0-9]/gi,'_');
       return <linearGradient key={k.id} id={`lc${id}`} x1="0" x2="0" y1="0" y2="1">
@@ -502,13 +529,18 @@ function LitterChart({kittens}){
       <line x1={PL} y1={y} x2={W-PR} y2={y} stroke="#E8E2D8" strokeWidth="1" strokeDasharray="3,3"/>
       <text x={PL-4} y={y+3} textAnchor="end" fontSize="8" fill="#A09888">{Math.round(v)}</text>
     </g>;})}
-    {allDts.map((dt,i)=>{
-      if(i%step!==0&&i!==allDts.length-1)return null;
-      const d=dt.split('T')[0];
-      return <text key={dt} x={toX(dt)} y={H-4} textAnchor="middle" fontSize="8" fill="#A09888">
-        {fmtShort(d)}
-      </text>;
-    })}
+    
+    {/* Stampa etichette asse X solo per date uniche per non accavallarle */}
+    {(()=>{
+      const uniqueDates = [...new Set(allDts.map(dt => dt.split('T')[0]))];
+      const step = Math.ceil(uniqueDates.length / 6);
+      return uniqueDates.map((d,i)=>{
+        if(i%step!==0&&i!==uniqueDates.length-1)return null;
+        const firstDt=allDts.find(dt=>dt.startsWith(d));
+        return <text key={d} x={toX(firstDt)} y={H-4} textAnchor="middle" fontSize="8" fill="#A09888">{fmtShort(d)}</text>;
+      });
+    })()}
+
     {kittens.map((k)=>{
       const s=sortWeights(k.weights);
       if(!s.length)return null;
@@ -531,10 +563,14 @@ function BigChart({weights,color}){
   const mn=Math.min(...vals),mx=Math.max(...vals),rng=mx-mn||50;
   const pMin=mn-rng*.12,pMax=mx+rng*.12;
   
-  // Aumentate dimensioni viewBox per mantenere finezza linee su PC
+  // Aumentata risoluzione viewBox per linee più fini
   const W=400,H=200,PL=35,PR=20,PT=15,PB=25,cw=W-PL-PR,ch=H-PT-PB;
   
-  const toX=i=>PL+(i/Math.max(vals.length-1,1))*cw;
+  // Scala basata sul tempo reale
+  const tVals = weights.map(w=>new Date(w.date+'T'+(w.time||'12:00')).getTime());
+  const tMin = Math.min(...tVals), tMax = Math.max(...tVals);
+  const toX = i => tMin===tMax ? PL+cw/2 : PL+((tVals[i]-tMin)/(tMax-tMin))*cw;
+  
   const toY=v=>PT+ch-((v-pMin)/(pMax-pMin))*ch;
   const pts=vals.map((v,i)=>`${toX(i)},${toY(v)}`).join(' ');
   const id=color.replace(/[^a-z0-9]/gi,'_');
@@ -548,12 +584,16 @@ function BigChart({weights,color}){
     </g>)}
     <polygon points={`${pts} ${toX(vals.length-1)},${PT+ch} ${PL},${PT+ch}`} fill={`url(#bc${id})`}/>
     <polyline points={pts} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    {vals.map((v,i)=><g key={i}>
-      <circle cx={toX(i)} cy={toY(v)} r="3" fill="white" stroke={color} strokeWidth="2"/>
-      {weights[i]&&<text x={toX(i)} y={H-4} textAnchor="middle" fontSize="8.5" fill="#a09888">
-        {fmtShort(weights[i].date)}
-      </text>}
-    </g>)}
+    {vals.map((v,i)=>{
+      // Mostra l'etichetta solo se è il primo punto del giorno
+      const showLbl = i===0 || weights[i].date !== weights[i-1].date;
+      return <g key={i}>
+        <circle cx={toX(i)} cy={toY(v)} r="3" fill="white" stroke={color} strokeWidth="2"/>
+        {showLbl&&<text x={toX(i)} y={H-4} textAnchor="middle" fontSize="8.5" fill="#a09888">
+          {fmtShort(weights[i].date)}
+        </text>}
+      </g>;
+    })}
   </svg>;
 }
 
@@ -903,7 +943,6 @@ function App(){
         {litter.kittens.length>0&&<div style={{background:'#fff',borderRadius:14,padding:'13px 11px 11px',border:'1px solid #EDE8E0',marginBottom:14}}>
           <p style={{...S.sec,marginTop:0}}>Curva di crescita — tutti i cuccioli</p>
           <LitterChart kittens={litter.kittens} />
-          {/* Legenda inferiore rimossa come richiesto */}
         </div>}
 
         <p style={S.sec}>Cuccioli</p>
