@@ -23,6 +23,9 @@
 </head>
 <body>
 <div id="root">
+  <div style="display:flex;align-items:center;justify-content:center;height:100dvh;color:#2C3E35;font-size:18px;gap:12px">
+    <span class="spin" style="display:inline-block">🐱</span> Caricamento…
+  </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -53,6 +56,7 @@ const COLLAR_COLORS = [
 ];
 const TOO_LIGHT=["#FFFFFF","#F4FF21","#FFCC00","#FFE600","#FFD54F","#CCFF33","#B2FF59","#AAFF00"];
 const STORAGE_KEY='mc_growth_v2';
+const CLOUD_KEY='mc_cloud_cfg';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
@@ -71,7 +75,7 @@ function hexToRgb(hex){
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// LOCAL STORAGE
+// LOCAL STORAGE & DEMO
 // ─────────────────────────────────────────────────────────────────────────────
 function loadData(){
   try{const s=localStorage.getItem(STORAGE_KEY);return s?JSON.parse(s):null;}
@@ -80,6 +84,10 @@ function loadData(){
 function saveData(d){
   try{localStorage.setItem(STORAGE_KEY,JSON.stringify(d));}
   catch{}
+}
+function loadCloudConfig(){
+  try{const s=localStorage.getItem(CLOUD_KEY);return s?JSON.parse(s):null;}
+  catch{return null;}
 }
 
 const DEMO_DATA={litters:[{id:1,name:"Cucciolata Primavera 2025",mother:"Luna di Camelidea",father:"Thor of Silverwood",birthDate:"2025-03-01",kittens:[
@@ -555,7 +563,11 @@ const btnStyle={width:'100%',padding:'12px 14px',borderRadius:12,border:'none',f
 // MAIN APP
 // ─────────────────────────────────────────────────────────────────────────────
 function App(){
-  const [data,setData]=useState(()=>loadData()||DEMO_DATA);
+  const [data,setData]=useState(null); // Init as null to load from cloud first
+  const [cloudCfg,setCloudCfg]=useState(()=>loadCloudConfig());
+  const [showCloud,setShowCloud]=useState(false);
+  const [cfgForm,setCfgForm]=useState({url:'',key:''});
+  
   const [screen,setScreen]=useState('home');
   const [selLitter,setSelLitter]=useState(null);
   const [selKitten,setSelKitten]=useState(null);
@@ -575,25 +587,90 @@ function App(){
   const [newLF,setNewLF]=useState({name:'',mother:'',father:'',birthDate:todayISO()});
   const [newKF,setNewKF]=useState({name:'',gender:'M',colorId:'#FF3B30'});
   
-  // Form pesi ora include data originale per permettere la modifica
   const [wForm,setWForm]=useState({date:todayISO(),time:todayTime(),weight:'',origDate:null,origTime:null});
   const [bulk,setBulk]=useState({});
   
   const wRef=useRef(null);
   const nameRef=useRef(null);
   const litterNameRef=useRef(null);
+  const firstRender=useRef(true);
 
-  useEffect(()=>saveData(data),[data]);
+  function toast2(msg){setToast(msg);setTimeout(()=>setToast(null),2200);}
+
+  // --- CLOUD LOAD & SAVE LOGIC ---
+  useEffect(() => {
+    let isMounted = true;
+    async function init() {
+      if (cloudCfg && cloudCfg.url && cloudCfg.key) {
+         try {
+           const res = await fetch(`${cloudCfg.url}/rest/v1/allevamento_db?id=eq.1&select=data_json`, {
+             headers: { 'apikey': cloudCfg.key, 'Authorization': `Bearer ${cloudCfg.key}` }
+           });
+           if (res.ok) {
+             const rows = await res.json();
+             if (rows && rows.length > 0 && rows[0].data_json && rows[0].data_json.litters) {
+               if(isMounted) setData(rows[0].data_json);
+               return; // Load success
+             }
+           }
+         } catch (e) {
+           console.error(e);
+           if(isMounted) toast2("Cloud offline, uso dati locali");
+         }
+      }
+      // Fallback
+      if(isMounted) setData(loadData() || DEMO_DATA);
+    }
+    init();
+    return () => { isMounted = false; };
+  }, [cloudCfg]);
+
+  useEffect(() => {
+    if (data === null) return;
+    if (firstRender.current) {
+      firstRender.current = false;
+      return;
+    }
+    saveData(data); // Local backup
+    if (cloudCfg && cloudCfg.url && cloudCfg.key) {
+      fetch(`${cloudCfg.url}/rest/v1/allevamento_db?id=eq.1`, {
+         method: 'PATCH',
+         headers: { 'apikey': cloudCfg.key, 'Authorization': `Bearer ${cloudCfg.key}`, 'Content-Type': 'application/json' },
+         body: JSON.stringify({ data_json: data })
+      }).catch(e => console.error(e));
+    }
+  }, [data, cloudCfg]);
+
+  useEffect(() => {
+    if (showCloud && cloudCfg) setCfgForm(cloudCfg);
+    else if (showCloud) setCfgForm({url:'', key:''});
+  }, [showCloud, cloudCfg]);
+
   useEffect(()=>{if(showWeight&&wRef.current)setTimeout(()=>wRef.current?.focus(),120);},[showWeight]);
   useEffect(()=>{if(editingName&&nameRef.current){nameRef.current.focus();nameRef.current.select();}},[editingName]);
   useEffect(()=>{if(editingLitterName&&litterNameRef.current){litterNameRef.current.focus();litterNameRef.current.select();}},[editingLitterName]);
 
-  function toast2(msg){setToast(msg);setTimeout(()=>setToast(null),2200);}
-
-  const litter=selLitter?data.litters.find(l=>l.id===selLitter):null;
+  const litter=selLitter&&data?data.litters.find(l=>l.id===selLitter):null;
   const kitten=litter&&selKitten?litter.kittens.find(k=>k.id===selKitten):null;
 
   // ─── mutations ───
+  function saveCloudConfig() {
+    const c = {url: cfgForm.url.trim(), key: cfgForm.key.trim()};
+    if(!c.url || !c.key) return;
+    localStorage.setItem(CLOUD_KEY, JSON.stringify(c));
+    setCloudCfg(c);
+    setData(null); // Force reload
+    firstRender.current = true;
+    setShowCloud(false);
+    toast2("Cloud collegato e in download...");
+  }
+  function disconnectCloud() {
+    localStorage.removeItem(CLOUD_KEY);
+    setCloudCfg(null);
+    setShowCloud(false);
+    toast2("Scollegato dal Cloud");
+  }
+
   function addLitter(){
     if(!newLF.name)return;
     const newId = Date.now();
@@ -694,6 +771,9 @@ function App(){
     exportBtn:{background:'rgba(255,255,255,0.12)',border:'none',color:'#F0EAD6',borderRadius:8,padding:'6px 11px',cursor:'pointer',fontSize:12,fontFamily:'inherit',fontWeight:'bold'},
   };
 
+  // Wait for cloud load
+  if (!data) return null;
+
   // ─────────── HOME ───────────────────────────────────────────────────────────
   const renderHomeScreen = () => (
     <>
@@ -703,6 +783,9 @@ function App(){
           <p style={S.ht}>Pesate Cucciolate</p>
           <p style={S.hs}>Il mio allevamento</p>
         </div>
+        <button style={{...S.exportBtn, background: cloudCfg ? '#4A8C5C' : 'rgba(255,255,255,0.12)'}} onClick={()=>setShowCloud(true)}>
+          ☁️ {cloudCfg ? 'Online' : 'Offline'}
+        </button>
       </div>
       <div style={S.body}>
         <p style={S.sec}>Cucciolate attive</p>
@@ -1021,6 +1104,22 @@ function App(){
         </div>)}
         <div style={{marginTop:18}}>
           <button style={{...S.btn, background: '#4A8C5C'}} onClick={addBulk}>Salva tutti i pesi</button>
+        </div>
+      </div>
+    </div>}
+
+    {/* Cloud Settings Modal */}
+    {showCloud && <div style={OV} onClick={()=>setShowCloud(false)}>
+      <div style={MB} onClick={e=>e.stopPropagation()}>
+        <div style={{fontSize:17,fontWeight:'bold',color:'#2C3E35',marginBottom:8}}>☁️ Impostazioni Cloud (Supabase)</div>
+        <p style={{fontSize:12, color:'#9A8E80', marginBottom:16}}>Inserisci le credenziali del database per attivare il salvataggio sincronizzato e accedere ai dati da qualsiasi dispositivo.</p>
+        <div style={{marginBottom:13}}><label style={S.lbl}>Project URL</label>
+          <input style={S.inp} value={cfgForm.url} onChange={e=>setCfgForm({...cfgForm,url:e.target.value})} placeholder="https://xyz.supabase.co"/></div>
+        <div style={{marginBottom:22}}><label style={S.lbl}>API Key (Anon)</label>
+          <input style={S.inp} type="password" value={cfgForm.key} onChange={e=>setCfgForm({...cfgForm,key:e.target.value})} placeholder="eyJhbG..."/></div>
+        <div style={{display:'flex', gap:8}}>
+          <button style={{...S.btn, background:'#4A8C5C', flex:1}} onClick={saveCloudConfig}>Salva e Connetti</button>
+          {cloudCfg && cloudCfg.url && <button style={{...S.btn, background:'#F44336', padding:'13px 16px', width:'auto'}} onClick={disconnectCloud}>Scollega</button>}
         </div>
       </div>
     </div>}
