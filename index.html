@@ -60,8 +60,10 @@ const STORAGE_KEY='mc_growth_v2';
 const fmtShort=d=>{const x=new Date(d);return`${x.getDate().toString().padStart(2,"0")}/${(x.getMonth()+1).toString().padStart(2,"0")}`;};
 const fmtFull=d=>new Date(d).toLocaleDateString("it-IT",{day:"2-digit",month:"short",year:"numeric"});
 const todayISO=()=>new Date().toISOString().split("T")[0];
+const todayTime=()=>{const d=new Date(); return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');};
 const dayAge=(birth,date)=>Math.round((new Date(date)-new Date(birth))/86400000);
-const gainPct=ws=>{if(ws.length<2)return null;const l=ws[ws.length-1].weight,p=ws[ws.length-2].weight;return(((l-p)/p)*100).toFixed(1);};
+const sortWeights=ws=>[...ws].sort((a,b)=>(a.date+'T'+(a.time||'12:00')).localeCompare(b.date+'T'+(b.time||'12:00')));
+const gainGrams=ws=>{if(ws.length<2)return null; return (ws[ws.length-1].weight - ws[ws.length-2].weight).toFixed(1);};
 const lineColor=(k)=>k.colorId;
 function hexToRgb(hex){
   if(!hex||!hex.startsWith('#')||hex.length<7)return{r:44,g:62,b:53};
@@ -82,14 +84,9 @@ function saveData(d){
 
 const DEMO_DATA={litters:[{id:1,name:"Cucciolata Primavera 2025",mother:"Luna di Camelidea",father:"Thor of Silverwood",birthDate:"2025-03-01",kittens:[
   {id:1,name:"Aragorn",gender:"M",colorId:"#FF3B30",weights:[
-    {date:"2025-03-01",weight:112},{date:"2025-03-02",weight:120},{date:"2025-03-03",weight:131},
-    {date:"2025-03-04",weight:143},{date:"2025-03-05",weight:158},{date:"2025-03-06",weight:170}]},
+    {date:"2025-03-01",time:"08:00",weight:112},{date:"2025-03-02",time:"08:30",weight:120},{date:"2025-03-03",time:"08:15",weight:131}]},
   {id:2,name:"Arya",gender:"F",colorId:"#FF4081",weights:[
-    {date:"2025-03-01",weight:98},{date:"2025-03-02",weight:105},{date:"2025-03-03",weight:115},
-    {date:"2025-03-04",weight:124},{date:"2025-03-05",weight:136},{date:"2025-03-06",weight:149}]},
-  {id:3,name:"Gandalf",gender:"M",colorId:"#2979FF",weights:[
-    {date:"2025-03-01",weight:105},{date:"2025-03-02",weight:112},{date:"2025-03-03",weight:122},
-    {date:"2025-03-04",weight:133},{date:"2025-03-05",weight:145},{date:"2025-03-06",weight:159}]}
+    {date:"2025-03-01",time:"08:00",weight:98},{date:"2025-03-02",time:"08:30",weight:105},{date:"2025-03-03",time:"08:15",weight:115}]},
 ]}]};
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -142,14 +139,14 @@ function drawLitterCanvas(kittens,W=520,H=240){
   const c=document.createElement('canvas');
   c.width=W*2;c.height=H*2;
   const ctx=c.getContext('2d');ctx.scale(2,2);
-  const allDates=[...new Set(kittens.flatMap(k=>k.weights.map(w=>w.date)))].sort();
+  const allDts=[...new Set(kittens.flatMap(k=>k.weights.map(w=>w.date+'T'+(w.time||'12:00'))))].sort();
   const allVals=kittens.flatMap(k=>k.weights.map(w=>w.weight));
   ctx.fillStyle='#FEFCF8';ctx.fillRect(0,0,W,H);
   if(!allVals.length)return c.toDataURL();
   const PL=52,PR=55,PT=12,PB=32,cw=W-PL-PR,ch=H-PT-PB;
   const mn=Math.min(...allVals),mx=Math.max(...allVals),rng=mx-mn||50;
   const pMin=mn-rng*.12,pMax=mx+rng*.2;
-  const toX=d=>{const i=allDates.indexOf(d);return allDates.length===1?PL+cw/2:PL+(i/(allDates.length-1))*cw;};
+  const toX=dt=>{const i=allDts.indexOf(dt);return allDts.length===1?PL+cw/2:PL+(i/(allDts.length-1))*cw;};
   const toY=v=>PT+ch-((v-pMin)/(pMax-pMin))*ch;
   
   ctx.strokeStyle='#e0dcd4';ctx.lineWidth=.8;ctx.setLineDash([4,4]);
@@ -160,34 +157,44 @@ function drawLitterCanvas(kittens,W=520,H=240){
     ctx.fillText(Math.round(v)+'g',PL-4,y+3);
   });
   ctx.setLineDash([]);
-  const step=Math.ceil(allDates.length/6);
-  allDates.forEach((d,i)=>{
-    if(i%step!==0&&i!==allDates.length-1)return;
+  const step=Math.ceil(allDts.length/6);
+  allDts.forEach((dt,i)=>{
+    if(i%step!==0&&i!==allDts.length-1)return;
+    const d=dt.split('T')[0];
     const lbl=fmtShort(d);
     ctx.fillStyle='#a09888';ctx.font='9px system-ui';ctx.textAlign='center';
-    ctx.fillText(lbl,toX(d),H-4);
+    ctx.fillText(lbl,toX(dt),H-4);
   });
   kittens.forEach((k)=>{
-    const sorted=[...k.weights].sort((a,b)=>a.date.localeCompare(b.date));
+    const sorted=sortWeights(k.weights);
     if(!sorted.length)return;
     const col=lineColor(k);
     const grad=ctx.createLinearGradient(0,PT,0,PT+ch);
     grad.addColorStop(0,col+'28');grad.addColorStop(1,col+'00');
     ctx.beginPath();
-    sorted.forEach((w,i)=>i?ctx.lineTo(toX(w.date),toY(w.weight)):ctx.moveTo(toX(w.date),toY(w.weight)));
-    ctx.lineTo(toX(sorted[sorted.length-1].date),PT+ch);
-    ctx.lineTo(toX(sorted[0].date),PT+ch);ctx.closePath();
+    sorted.forEach((w,i)=>{
+      const dt=w.date+'T'+(w.time||'12:00');
+      i?ctx.lineTo(toX(dt),toY(w.weight)):ctx.moveTo(toX(dt),toY(w.weight));
+    });
+    ctx.lineTo(toX(sorted[sorted.length-1].date+'T'+(sorted[sorted.length-1].time||'12:00')),PT+ch);
+    ctx.lineTo(toX(sorted[0].date+'T'+(sorted[0].time||'12:00')),PT+ch);ctx.closePath();
     ctx.fillStyle=grad;ctx.fill();
+    
     ctx.beginPath();ctx.strokeStyle=col;ctx.lineWidth=2.2;ctx.lineJoin='round';ctx.lineCap='round';
-    sorted.forEach((w,i)=>i?ctx.lineTo(toX(w.date),toY(w.weight)):ctx.moveTo(toX(w.date),toY(w.weight)));
+    sorted.forEach((w,i)=>{
+      const dt=w.date+'T'+(w.time||'12:00');
+      i?ctx.lineTo(toX(dt),toY(w.weight)):ctx.moveTo(toX(dt),toY(w.weight));
+    });
     ctx.stroke();
+    
     sorted.forEach(w=>{
-      ctx.beginPath();ctx.arc(toX(w.date),toY(w.weight),3,0,Math.PI*2);
+      const dt=w.date+'T'+(w.time||'12:00');
+      ctx.beginPath();ctx.arc(toX(dt),toY(w.weight),3,0,Math.PI*2);
       ctx.fillStyle='#fff';ctx.fill();ctx.strokeStyle=col;ctx.lineWidth=1.8;ctx.stroke();
     });
     const last=sorted[sorted.length-1];
     ctx.fillStyle=col;ctx.font='bold 9px system-ui';ctx.textAlign='left';
-    ctx.fillText(k.name,toX(last.date)+5,toY(last.weight)+3);
+    ctx.fillText(k.name,toX(last.date+'T'+(last.time||'12:00'))+5,toY(last.weight)+3);
   });
   return c.toDataURL('image/png');
 }
@@ -203,24 +210,26 @@ function dlBlob(blob,name){
 }
 
 function exportLitterCSV(litter){
-  const allDates=[...new Set(litter.kittens.flatMap(k=>k.weights.map(w=>w.date)))].sort();
-  const hdr=['Data','Giorno',...litter.kittens.map(k=>`${k.name} (g)`)];
-  const rows=allDates.map(d=>{
+  const allDts=[...new Set(litter.kittens.flatMap(k=>k.weights.map(w=>w.date+'T'+(w.time||'12:00'))))].sort();
+  const hdr=['Data','Ora','Giorno',...litter.kittens.map(k=>`${k.name} (g)`)];
+  const rows=allDts.map(dt=>{
+    const [d, t] = dt.split('T');
     const g=litter.birthDate?dayAge(litter.birthDate,d):'';
-    return[d,g,...litter.kittens.map(k=>{const w=k.weights.find(x=>x.date===d);return w?w.weight:'';})];
+    return[d,t!=='12:00'?t:'',g,...litter.kittens.map(k=>{const w=k.weights.find(x=>(x.date+'T'+(x.time||'12:00'))===dt);return w?w.weight:'';})];
   });
   const csv='\uFEFF'+[hdr,...rows].map(r=>r.join(',')).join('\r\n');
   dlBlob(new Blob([csv],{type:'text/csv;charset=utf-8'}),`${litter.name}.csv`);
 }
 
 function exportKittenCSV(kitten,litter){
-  const sorted=[...kitten.weights].sort((a,b)=>a.date.localeCompare(b.date));
-  const hdr=['Data','Giorno','Peso (g)','Variazione (g)'];
+  const sorted=sortWeights(kitten.weights);
+  const hdr=['Data','Ora','Giorno','Peso (g)','Variazione (g)'];
   const rows=sorted.map((w,i)=>[
     w.date,
+    w.time||'',
     litter.birthDate?dayAge(litter.birthDate,w.date):'',
     w.weight,
-    i>0?w.weight-sorted[i-1].weight:''
+    i>0?(w.weight-sorted[i-1].weight).toFixed(1):''
   ]);
   const csv='\uFEFF'+[hdr,...rows].map(r=>r.join(',')).join('\r\n');
   dlBlob(new Blob([csv],{type:'text/csv;charset=utf-8'}),`${litter.name} - ${kitten.name}.csv`);
@@ -284,17 +293,18 @@ function exportLitterPDF(litter){
     y+=7;
   }
 
-  const allDates=[...new Set(litter.kittens.flatMap(k=>k.weights.map(w=>w.date)))].sort();
-  const head=[['Data','G°',...litter.kittens.map(k=>`${k.name}\n${k.gender==='M'?'♂':'♀'}`)]];
-  const body=allDates.map(d=>{
+  const allDts=[...new Set(litter.kittens.flatMap(k=>k.weights.map(w=>w.date+'T'+(w.time||'12:00'))))].sort();
+  const head=[['Data','Ora','G°',...litter.kittens.map(k=>`${k.name}\n${k.gender==='M'?'♂':'♀'}`)]];
+  const body=allDts.map(dt=>{
+    const [d, t] = dt.split('T');
     const g=litter.birthDate?dayAge(litter.birthDate,d):'-';
-    return[fmtShort(d),String(g),...litter.kittens.map(k=>{const w=k.weights.find(x=>x.date===d);return w?`${w.weight}g`:'-';})];
+    return[fmtShort(d),t!=='12:00'?t:'',String(g),...litter.kittens.map(k=>{const w=k.weights.find(x=>(x.date+'T'+(x.time||'12:00'))===dt);return w?`${w.weight}g`:'-';})];
   });
   doc.autoTable({head,body,startY:y,
     styles:{fontSize:8,cellPadding:2,halign:'center'},
     headStyles:{fillColor:[44,62,53],textColor:[240,234,214],fontStyle:'bold'},
     alternateRowStyles:{fillColor:[250,247,242]},
-    columnStyles:{0:{halign:'left',cellWidth:22},1:{cellWidth:10}},
+    columnStyles:{0:{halign:'left',cellWidth:16},1:{cellWidth:10},2:{cellWidth:8}},
     margin:{left:PL,right:PR},
     didDrawPage:({pageNumber})=>pdfFooter(doc,pageNumber)
   });
@@ -307,7 +317,7 @@ function exportKittenPDF(kitten,litter){
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
   const W=210,PL=15,PR=15;
-  const sorted=[...kitten.weights].sort((a,b)=>a.date.localeCompare(b.date));
+  const sorted=sortWeights(kitten.weights);
   const col=lineColor(kitten);
   const rgb=hexToRgb(col);
 
@@ -347,18 +357,18 @@ function exportKittenPDF(kitten,litter){
     y+=iH+6;
   }
 
-  const head=[['Data','Giorno','Peso (g)','Variazione','Nota']];
+  const head=[['Data','Ora','Giorno','Peso (g)','Variazione','Nota']];
   const body=sorted.map((w,i)=>{
     const g=litter.birthDate?dayAge(litter.birthDate,w.date):'-';
-    const delta=i>0?w.weight-sorted[i-1].weight:null;
+    const delta=i>0?(w.weight-sorted[i-1].weight).toFixed(1):null;
     const sign=delta===null?'-':(delta>=0?`+${delta}g`:`${delta}g`);
-    return[fmtFull(w.date),String(g),`${w.weight} g`,sign,''];
+    return[fmtFull(w.date),w.time||'',String(g),`${w.weight} g`,sign,''];
   });
   doc.autoTable({head,body,startY:y,
     styles:{fontSize:9,cellPadding:2.5},
     headStyles:{fillColor:[44,62,53],textColor:[240,234,214],fontStyle:'bold'},
     alternateRowStyles:{fillColor:[250,247,242]},
-    columnStyles:{0:{cellWidth:34},1:{cellWidth:16,halign:'center'},2:{cellWidth:20,halign:'right'},3:{cellWidth:24,halign:'right'},4:{cellWidth:'auto'}},
+    columnStyles:{0:{cellWidth:24},1:{cellWidth:14},2:{cellWidth:14,halign:'center'},3:{cellWidth:18,halign:'right'},4:{cellWidth:20,halign:'right'},5:{cellWidth:'auto'}},
     margin:{left:PL,right:PR},
     didDrawPage:({pageNumber})=>pdfFooter(doc,pageNumber)
   });
@@ -443,14 +453,14 @@ function MiniChart({weights,color}){
 function LitterChart({kittens}){
   const has=kittens.some(k=>k.weights.length>0);
   if(!has)return <div style={{textAlign:'center',color:'#9A8E80',padding:24,fontSize:13}}>Nessun peso ancora.</div>;
-  const allDates=[...new Set(kittens.flatMap(k=>k.weights.map(w=>w.date)))].sort();
+  const allDts=[...new Set(kittens.flatMap(k=>k.weights.map(w=>w.date+'T'+(w.time||'12:00'))))].sort();
   const allVals=kittens.flatMap(k=>k.weights.map(w=>w.weight));
   const mn=Math.min(...allVals),mx=Math.max(...allVals),rng=mx-mn||50;
   const pMin=mn-rng*.12,pMax=mx+rng*.2;
   const W=320,H=175,PL=40,PR=12,PT=10,PB=28,cw=W-PL-PR,ch=H-PT-PB;
-  const toX=d=>{const i=allDates.indexOf(d);return allDates.length===1?PL+cw/2:PL+(i/(allDates.length-1))*cw;};
+  const toX=dt=>{const i=allDts.indexOf(dt);return allDts.length===1?PL+cw/2:PL+(i/(allDts.length-1))*cw;};
   const toY=v=>PT+ch-((v-pMin)/(pMax-pMin))*ch;
-  const step=Math.ceil(allDates.length/6);
+  const step=Math.ceil(allDts.length/6);
   return <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{overflow:'visible',display:'block'}}>
     <defs>{kittens.map((k)=>{const c=lineColor(k),id=c.replace(/[^a-z0-9]/gi,'_');
       return <linearGradient key={k.id} id={`lc${id}`} x1="0" x2="0" y1="0" y2="1">
@@ -461,23 +471,24 @@ function LitterChart({kittens}){
       <line x1={PL} y1={y} x2={W-PR} y2={y} stroke="#E8E2D8" strokeWidth="1" strokeDasharray="3,3"/>
       <text x={PL-4} y={y+3} textAnchor="end" fontSize="8" fill="#A09888">{Math.round(v)}</text>
     </g>;})}
-    {allDates.map((d,i)=>{
-      if(i%step!==0&&i!==allDates.length-1)return null;
-      return <text key={d} x={toX(d)} y={H-4} textAnchor="middle" fontSize="8" fill="#A09888">
+    {allDts.map((dt,i)=>{
+      if(i%step!==0&&i!==allDts.length-1)return null;
+      const d=dt.split('T')[0];
+      return <text key={dt} x={toX(dt)} y={H-4} textAnchor="middle" fontSize="8" fill="#A09888">
         {fmtShort(d)}
       </text>;
     })}
     {kittens.map((k)=>{
-      const s=[...k.weights].sort((a,b)=>a.date.localeCompare(b.date));
+      const s=sortWeights(k.weights);
       if(!s.length)return null;
       const c=lineColor(k),id=c.replace(/[^a-z0-9]/gi,'_');
-      const pts=s.map(w=>`${toX(w.date)},${toY(w.weight)}`);
+      const pts=s.map(w=>`${toX(w.date+'T'+(w.time||'12:00'))},${toY(w.weight)}`);
       const last=s[s.length-1];
       return <g key={k.id}>
-        <polygon points={`${pts.join(' ')} ${toX(last.date)},${PT+ch} ${toX(s[0].date)},${PT+ch}`} fill={`url(#lc${id})`}/>
+        <polygon points={`${pts.join(' ')} ${toX(last.date+'T'+(last.time||'12:00'))},${PT+ch} ${toX(s[0].date+'T'+(s[0].time||'12:00'))},${PT+ch}`} fill={`url(#lc${id})`}/>
         <polyline points={pts.join(' ')} fill="none" stroke={c} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-        {s.map(w=><circle key={w.date} cx={toX(w.date)} cy={toY(w.weight)} r="3.2" fill="white" stroke={c} strokeWidth="2"/>)}
-        <text x={toX(last.date)+5} y={toY(last.weight)+3} fontSize="8.5" fontWeight="bold" fill={c}>{k.name}</text>
+        {s.map(w=><circle key={w.date+w.time} cx={toX(w.date+'T'+(w.time||'12:00'))} cy={toY(w.weight)} r="3.2" fill="white" stroke={c} strokeWidth="2"/>)}
+        <text x={toX(last.date+'T'+(last.time||'12:00'))+5} y={toY(last.weight)+3} fontSize="8.5" fontWeight="bold" fill={c}>{k.name}</text>
       </g>;
     })}
   </svg>;
@@ -563,14 +574,15 @@ function App(){
   const [toast,setToast]=useState(null);
   const [newLF,setNewLF]=useState({name:'',mother:'',father:'',birthDate:todayISO()});
   const [newKF,setNewKF]=useState({name:'',gender:'M',colorId:'#FF3B30'});
-  const [wForm,setWForm]=useState({date:todayISO(),weight:''});
+  
+  // Form pesi ora include data originale per permettere la modifica
+  const [wForm,setWForm]=useState({date:todayISO(),time:todayTime(),weight:'',origDate:null,origTime:null});
   const [bulk,setBulk]=useState({});
   
   const wRef=useRef(null);
   const nameRef=useRef(null);
   const litterNameRef=useRef(null);
 
-  // persist to localStorage whenever data changes
   useEffect(()=>saveData(data),[data]);
   useEffect(()=>{if(showWeight&&wRef.current)setTimeout(()=>wRef.current?.focus(),120);},[showWeight]);
   useEffect(()=>{if(editingName&&nameRef.current){nameRef.current.focus();nameRef.current.select();}},[editingName]);
@@ -595,15 +607,40 @@ function App(){
   
   function addWeight(){
     if(!wForm.weight||!selKitten)return;
-    const w={date:wForm.date,weight:parseFloat(wForm.weight)};
-    setData(d=>({...d,litters:d.litters.map(l=>l.id!==selLitter?l:{...l,kittens:l.kittens.map(k=>k.id!==selKitten?k:{...k,weights:[...k.weights.filter(x=>x.date!==w.date),w].sort((a,b)=>a.date.localeCompare(b.date))})})}));
-    setWForm(f=>({...f,weight:''}));
+    const w={date:wForm.date, time:wForm.time, weight:parseFloat(wForm.weight)};
+    const oD = wForm.origDate || wForm.date;
+    const oT = wForm.origTime || wForm.time || '12:00';
+    
+    setData(d=>({...d,litters:d.litters.map(l=>l.id!==selLitter?l:{...l,kittens:l.kittens.map(k=>k.id!==selKitten?k:{...k,
+      weights:sortWeights([...k.weights.filter(x=>!(x.date===oD && (x.time||'12:00')===oT)), w])
+    })})}));
+    setWForm({date:todayISO(), time:todayTime(), weight:'', origDate:null, origTime:null});
     setShowWeight(false);
     toast2(`${w.weight}g salvato ✓`);
   }
   
-  function addBulk(){const date=bulk.__date||todayISO();setData(d=>({...d,litters:d.litters.map(l=>l.id!==selLitter?l:{...l,kittens:l.kittens.map(k=>{const v=bulk[k.id];if(!v)return k;const w={date,weight:parseFloat(v)};return{...k,weights:[...k.weights.filter(x=>x.date!==date),w].sort((a,b)=>a.date.localeCompare(b.date))};  })})}));setBulk({});setShowBulk(false);toast2('Pesata salvata ✓');}
-  function delWeight(date){setData(d=>({...d,litters:d.litters.map(l=>l.id!==selLitter?l:{...l,kittens:l.kittens.map(k=>k.id!==selKitten?k:{...k,weights:k.weights.filter(w=>w.date!==date)})})}));toast2('Peso eliminato ✓');}
+  function addBulk(){
+    const date=bulk.__date||todayISO();
+    const time=bulk.__time||todayTime();
+    setData(d=>({...d,litters:d.litters.map(l=>l.id!==selLitter?l:{...l,kittens:l.kittens.map(k=>{
+      const v=bulk[k.id];
+      if(!v)return k;
+      const w={date,time,weight:parseFloat(v)};
+      return{...k,weights:sortWeights([...k.weights.filter(x=>!(x.date===date && (x.time||'12:00')===time)),w])};
+    })})}));
+    setBulk({});
+    setShowBulk(false);
+    toast2('Pesata salvata ✓');
+  }
+  
+  function delWeight(date, time){
+    const t = time || '12:00';
+    setData(d=>({...d,litters:d.litters.map(l=>l.id!==selLitter?l:{...l,kittens:l.kittens.map(k=>k.id!==selKitten?k:{...k,
+      weights:k.weights.filter(w=>!(w.date===date && (w.time||'12:00')===t))
+    })})}));
+    toast2('Peso eliminato ✓');
+  }
+  
   function changeColor(lid,kid,colorId){setData(d=>({...d,litters:d.litters.map(l=>l.id!==lid?l:{...l,kittens:l.kittens.map(k=>k.id!==kid?k:{...k,colorId})})}));toast2('Colore aggiornato ✓');}
   
   function saveKittenEdits(){
@@ -727,7 +764,7 @@ function App(){
               </div>}
         </div>
         {!editingLitterName && <button style={{...S.exportBtn}} onClick={()=>setExportTarget('litter')}>📤</button>}
-        {!editingLitterName && <button style={{...S.exportBtn,marginLeft:4}} onClick={()=>{setBulk({__date:todayISO()});setShowBulk(true);}}>📋</button>}
+        {!editingLitterName && <button style={{...S.exportBtn,marginLeft:4}} onClick={()=>{setBulk({__date:todayISO(), __time:todayTime()});setShowBulk(true);}}>📋</button>}
       </div>
       <div style={S.body}>
         {litter.mother&&<div style={{background:'#EDE8E0',borderRadius:10,padding:'8px 12px',marginBottom:14,fontSize:12,color:'#6B5E4E'}}>
@@ -749,9 +786,9 @@ function App(){
 
         <p style={S.sec}>Cuccioli</p>
         {litter.kittens.map((k)=>{
-          const sorted=[...k.weights].sort((a,b)=>a.date.localeCompare(b.date));
+          const sorted=sortWeights(k.weights);
           const lastW=sorted.length?sorted[sorted.length-1].weight:null;
-          const gn=gainPct(sorted);const gnN=gn?parseFloat(gn):null;
+          const gnN=gainGrams(sorted);
           return <div key={k.id} style={S.card} onClick={()=>{setSelKitten(k.id);setScreen('kitten');}}>
             <div style={{display:'flex',alignItems:'center',gap:12}}>
               <ColorDot colorId={k.colorId} size={36} onClick={e=>{e?.stopPropagation();setCpTarget({lid:litter.id,kid:k.id,cur:k.colorId});}}/>
@@ -762,7 +799,7 @@ function App(){
                 </div>
                 <div style={{fontSize:13,color:'#7A6E60',marginTop:3}}>
                   {lastW?<b>{lastW}g</b>:<span style={{color:'#b0a898'}}>Nessun peso</span>}
-                  {gnN!==null&&<span style={{marginLeft:8,color:gnN>0?'#4A8C5C':'#C0472A',fontSize:12}}>{gnN>0?'▲':'▼'} {Math.abs(gnN)}%</span>}
+                  {gnN!==null&&<span style={{marginLeft:8,color:gnN>=0?'#4A8C5C':'#C0472A',fontSize:12}}>{gnN>=0?'▲ +':'▼ '}{gnN}g</span>}
                 </div>
               </div>
               <MiniChart weights={sorted} color={lineColor(k)}/>
@@ -783,10 +820,10 @@ function App(){
   // ─────────── KITTEN ─────────────────────────────────────────────────────────
   const renderKittenScreen = () => {
     if(!kitten||!litter)return null;
-    const sorted=[...kitten.weights].sort((a,b)=>a.date.localeCompare(b.date));
+    const sorted=sortWeights(kitten.weights);
     const lastW=sorted.length?sorted[sorted.length-1].weight:null;
     const firstW=sorted.length?sorted[0].weight:null;
-    const totalGain=lastW&&firstW?lastW-firstW:null;
+    const totalGain=lastW&&firstW?(lastW-firstW).toFixed(1):null;
     const lc=lineColor(kitten);
     return <>
       <div style={{...S.hdr, alignItems: editingName ? 'flex-start' : 'center'}}>
@@ -841,10 +878,10 @@ function App(){
         {!sorted.length&&<div style={{color:'#9A8E80',textAlign:'center',padding:'20px 0'}}>Nessun peso registrato.</div>}
         {[...sorted].reverse().map((w,i)=>{
           const prev=sorted[sorted.length-2-i];
-          const delta=prev?w.weight-prev.weight:null;
-          return <div key={w.date} style={{...S.card,cursor:'default',display:'flex',alignItems:'center'}}>
+          const delta=prev?(w.weight-prev.weight).toFixed(1):null;
+          return <div key={w.date+(w.time||'12:00')} style={{...S.card,cursor:'default',display:'flex',alignItems:'center'}}>
             <div style={{flex:1}}>
-              <div style={{fontSize:14,color:'#2C3E35',fontWeight:'bold'}}>{fmtFull(w.date)}</div>
+              <div style={{fontSize:14,color:'#2C3E35',fontWeight:'bold'}}>{fmtFull(w.date)} {w.time&&<span style={{fontSize:12,fontWeight:'normal',color:'#9A8E80'}}>ore {w.time}</span>}</div>
               {litter.birthDate&&<div style={{fontSize:11,color:'#9A8E80'}}>Giorno {dayAge(litter.birthDate,w.date)}</div>}
             </div>
             <div style={{textAlign:'right'}}>
@@ -852,13 +889,13 @@ function App(){
               {delta!==null&&<div style={{fontSize:12,color:delta>=0?'#4A8C5C':'#C0472A'}}>{delta>=0?'+':''}{delta}g</div>}
             </div>
             <div style={{display:'flex', gap: 6, marginLeft:12}}>
-              <button onClick={()=>{setWForm({date:w.date, weight:w.weight}); setShowWeight(true);}} style={{background:'#2A6DB0',border:'none',fontSize:12,cursor:'pointer',color:'#fff',padding:'6px 10px', borderRadius:6, fontWeight:'bold'}}>Modifica</button>
-              <button onClick={()=>delWeight(w.date)} style={{background:'#F44336',border:'none',fontSize:12,cursor:'pointer',color:'#fff',padding:'6px 10px', borderRadius:6, fontWeight:'bold'}}>Elimina</button>
+              <button onClick={()=>{setWForm({date:w.date, time:w.time||'12:00', weight:w.weight, origDate:w.date, origTime:w.time||'12:00'}); setShowWeight(true);}} style={{background:'#2A6DB0',border:'none',fontSize:12,cursor:'pointer',color:'#fff',padding:'6px 10px', borderRadius:6, fontWeight:'bold'}}>Modifica</button>
+              <button onClick={()=>delWeight(w.date, w.time)} style={{background:'#F44336',border:'none',fontSize:12,cursor:'pointer',color:'#fff',padding:'6px 10px', borderRadius:6, fontWeight:'bold'}}>Elimina</button>
             </div>
           </div>;
         })}
       </div>
-      <button style={S.fab} onClick={()=>{setWForm({date:todayISO(),weight:''});setShowWeight(true);}}>⚖</button>
+      <button style={S.fab} onClick={()=>{setWForm({date:todayISO(),time:todayTime(),weight:'',origDate:null,origTime:null});setShowWeight(true);}}>⚖</button>
 
       {exportTarget==='kitten'&&<ExportMenu
         onPDF={()=>exportKittenPDF(kitten,litter)}
@@ -947,8 +984,12 @@ function App(){
         <div style={{fontSize:13,color:'#9A8E80',marginBottom:16}}>
           {kitten?.weights.length?`Ultimo: ${kitten.weights[kitten.weights.length-1].weight}g`:'Primo peso'}
         </div>
-        <div style={{marginBottom:13}}><label style={S.lbl}>Data</label>
-          <input style={S.inp} type="date" value={wForm.date} onChange={e=>setWForm({...wForm,date:e.target.value})}/></div>
+        <div style={{display:'flex',gap:10,marginBottom:13}}>
+          <div style={{flex:1}}><label style={S.lbl}>Data</label>
+            <input style={S.inp} type="date" value={wForm.date} onChange={e=>setWForm({...wForm,date:e.target.value})}/></div>
+          <div style={{flex:1}}><label style={S.lbl}>Ora</label>
+            <input style={S.inp} type="time" value={wForm.time} onChange={e=>setWForm({...wForm,time:e.target.value})}/></div>
+        </div>
         <div style={{marginBottom:22}}><label style={S.lbl}>Peso (grammi)</label>
           <input ref={wRef} style={{...S.inp,fontSize:32,textAlign:'center',fontWeight:'bold'}}
             type="number" inputMode="numeric" value={wForm.weight}
@@ -962,8 +1003,12 @@ function App(){
     {showBulk&&litter&&<div style={OV} onClick={()=>setShowBulk(false)}>
       <div style={MB} onClick={e=>e.stopPropagation()}>
         <div style={{fontSize:17,fontWeight:'bold',color:'#2C3E35',marginBottom:14}}>📋 Pesata giornaliera</div>
-        <div style={{marginBottom:14}}><label style={S.lbl}>Data</label>
-          <input style={S.inp} type="date" value={bulk.__date||todayISO()} onChange={e=>setBulk({...bulk,__date:e.target.value})}/></div>
+        <div style={{display:'flex',gap:10,marginBottom:14}}>
+          <div style={{flex:1}}><label style={S.lbl}>Data</label>
+            <input style={S.inp} type="date" value={bulk.__date||todayISO()} onChange={e=>setBulk({...bulk,__date:e.target.value})}/></div>
+          <div style={{flex:1}}><label style={S.lbl}>Ora</label>
+            <input style={S.inp} type="time" value={bulk.__time!==undefined?bulk.__time:todayTime()} onChange={e=>setBulk({...bulk,__time:e.target.value})}/></div>
+        </div>
         {litter.kittens.map(k=><div key={k.id} style={{marginBottom:11,display:'flex',alignItems:'center',gap:10}}>
           <ColorDot colorId={k.colorId} size={28}/>
           <div style={{display:'flex',alignItems:'center',gap:5,width:92,flexShrink:0}}>
