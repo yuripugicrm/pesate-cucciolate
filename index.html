@@ -95,6 +95,87 @@ function hexToRgb(hex){
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// EXPORT AGGREGATION LOGIC (FASCE ORARIE)
+// ─────────────────────────────────────────────────────────────────────────────
+function getFascia(timeStr) {
+  if(!timeStr) return 'MATTINA';
+  const h = parseInt(timeStr.split(':')[0], 10);
+  if(h < 12) return 'MATTINA';
+  if(h < 18) return 'POMERIGGIO';
+  return 'SERA';
+}
+
+function buildExportRows(kittens) {
+  let allDts = [];
+  kittens.forEach(k => {
+    k.weights.forEach(w => {
+      allDts.push({ dt: w.date+'T'+(w.time||'12:00'), date: w.date, time: w.time||'12:00', kId: k.id, weight: w.weight });
+    });
+  });
+  // Ordina cronologicamente
+  allDts.sort((a,b) => a.dt.localeCompare(b.dt));
+
+  // Raggruppa prima per giorno
+  const byDate = {};
+  allDts.forEach(item => {
+    if(!byDate[item.date]) byDate[item.date] = [];
+    byDate[item.date].push(item);
+  });
+
+  const finalRows = [];
+
+  Object.keys(byDate).sort().forEach(date => {
+    const items = byDate[date];
+    let clusters = [];
+    let currentCluster = [];
+    
+    // Clustering: se due pesate avvengono entro 60 minuti le unisce nella stessa "sessione"
+    items.forEach(item => {
+      if (currentCluster.length === 0) {
+        currentCluster.push(item);
+      } else {
+        const lastItem = currentCluster[currentCluster.length-1];
+        const diffMins = (new Date(item.dt).getTime() - new Date(lastItem.dt).getTime()) / 60000;
+        if (diffMins <= 60) {
+          currentCluster.push(item);
+        } else {
+          clusters.push(currentCluster);
+          currentCluster = [item];
+        }
+      }
+    });
+    if(currentCluster.length > 0) clusters.push(currentCluster);
+
+    const fasciaMerged = {};
+
+    clusters.forEach(cluster => {
+      // Determina la fascia dominante nel cluster (se inizio alle 11:56 e finisco alle 12:05, vince chi ha più record)
+      const counts = { 'MATTINA': 0, 'POMERIGGIO': 0, 'SERA': 0 };
+      cluster.forEach(item => counts[getFascia(item.time)]++);
+      let domFascia = 'MATTINA';
+      let max = -1;
+      ['MATTINA', 'POMERIGGIO', 'SERA'].forEach(f => {
+        if(counts[f] > max) { max = counts[f]; domFascia = f; }
+      });
+
+      if(!fasciaMerged[domFascia]) fasciaMerged[domFascia] = {};
+      cluster.forEach(item => {
+        fasciaMerged[domFascia][item.kId] = item.weight; // L'ultimo record del cluster sovrascrive
+      });
+    });
+
+    // Inserisce le righe nell'ordine naturale
+    ['MATTINA', 'POMERIGGIO', 'SERA'].forEach(f => {
+      if(fasciaMerged[f]) {
+        finalRows.push({ date, fascia: f, data: fasciaMerged[f] });
+      }
+    });
+  });
+
+  return finalRows;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // LOCAL STORAGE & DEMO
 // ─────────────────────────────────────────────────────────────────────────────
 function loadData(){
@@ -255,26 +336,25 @@ function dlBlob(blob,name){
 }
 
 function exportLitterCSV(litter){
-  const allDts=[...new Set(litter.kittens.flatMap(k=>k.weights.map(w=>w.date+'T'+(w.time||'12:00'))))].sort();
-  const hdr=['Data','Ora','Giorno',...litter.kittens.map(k=>`${k.name} (g)`)];
-  const rows=allDts.map(dt=>{
-    const [d, t] = dt.split('T');
-    const g=litter.birthDate?dayAge(litter.birthDate,d):'';
-    return[d,t!=='12:00'?t:'',g,...litter.kittens.map(k=>{const w=k.weights.find(x=>(x.date+'T'+(x.time||'12:00'))===dt);return w?w.weight:'';})];
+  const rowsData = buildExportRows(litter.kittens);
+  const hdr=['Data','Fascia','Giorno',...litter.kittens.map(k=>`${k.name} (g)`)];
+  const rows = rowsData.map(r => {
+    const g = litter.birthDate ? dayAge(litter.birthDate, r.date) : '';
+    return [r.date, r.fascia, g, ...litter.kittens.map(k => r.data[k.id] || '')];
   });
   const csv='\uFEFF'+[hdr,...rows].map(r=>r.join(',')).join('\r\n');
   dlBlob(new Blob([csv],{type:'text/csv;charset=utf-8'}),`${litter.name}.csv`);
 }
 
 function exportKittenCSV(kitten,litter){
-  const sorted=sortWeights(kitten.weights);
-  const hdr=['Data','Ora','Giorno','Peso (g)','Variazione (g)'];
-  const rows=sorted.map((w,i)=>[
-    w.date,
-    w.time||'',
-    litter.birthDate?dayAge(litter.birthDate,w.date):'',
-    w.weight,
-    i>0?(w.weight-sorted[i-1].weight).toFixed(1):''
+  const rowsData = buildExportRows([kitten]);
+  const hdr=['Data','Fascia','Giorno','Peso (g)','Variazione (g)'];
+  const rows=rowsData.map((r,i)=>[
+    r.date,
+    r.fascia,
+    litter.birthDate?dayAge(litter.birthDate,r.date):'',
+    r.data[kitten.id],
+    i>0?(r.data[kitten.id]-rowsData[i-1].data[kitten.id]).toFixed(1):''
   ]);
   const csv='\uFEFF'+[hdr,...rows].map(r=>r.join(',')).join('\r\n');
   dlBlob(new Blob([csv],{type:'text/csv;charset=utf-8'}),`${litter.name} - ${kitten.name}.csv`);
@@ -338,18 +418,18 @@ function exportLitterPDF(litter){
     y+=7;
   }
 
-  const allDts=[...new Set(litter.kittens.flatMap(k=>k.weights.map(w=>w.date+'T'+(w.time||'12:00'))))].sort();
-  const head=[['Data','Ora','G°',...litter.kittens.map(k=>`${k.name}\n${k.gender==='M'?'♂':'♀'}`)]];
-  const body=allDts.map(dt=>{
-    const [d, t] = dt.split('T');
-    const g=litter.birthDate?dayAge(litter.birthDate,d):'-';
-    return[fmtShort(d),t!=='12:00'?t:'',String(g),...litter.kittens.map(k=>{const w=k.weights.find(x=>(x.date+'T'+(x.time||'12:00'))===dt);return w?`${w.weight}g`:'-';})];
+  const rowsData = buildExportRows(litter.kittens);
+  const head=[['Data','Fascia','G°',...litter.kittens.map(k=>`${k.name}\n${k.gender==='M'?'♂':'♀'}`)]];
+  const body=rowsData.map(r=>{
+    const g=litter.birthDate?dayAge(litter.birthDate,r.date):'-';
+    // Abbreviamo in MAT. POM. SER. per questioni di spazio nel PDF
+    return[fmtShort(r.date), r.fascia.substring(0,3)+'.', String(g),...litter.kittens.map(k=>r.data[k.id]?`${r.data[k.id]}g`:'-')];
   });
   doc.autoTable({head,body,startY:y,
     styles:{fontSize:8,cellPadding:2,halign:'center'},
     headStyles:{fillColor:[44,62,53],textColor:[240,234,214],fontStyle:'bold'},
     alternateRowStyles:{fillColor:[250,247,242]},
-    columnStyles:{0:{halign:'left',cellWidth:16},1:{cellWidth:10},2:{cellWidth:8}},
+    columnStyles:{0:{halign:'left',cellWidth:14},1:{cellWidth:12},2:{cellWidth:8}},
     margin:{left:PL,right:PR},
     didDrawPage:({pageNumber})=>pdfFooter(doc,pageNumber)
   });
@@ -402,18 +482,20 @@ function exportKittenPDF(kitten,litter){
     y+=iH+6;
   }
 
-  const head=[['Data','Ora','Giorno','Peso (g)','Variazione','Nota']];
-  const body=sorted.map((w,i)=>{
-    const g=litter.birthDate?dayAge(litter.birthDate,w.date):'-';
-    const delta=i>0?(w.weight-sorted[i-1].weight).toFixed(1):null;
+  const rowsData = buildExportRows([kitten]);
+  const head=[['Data','Fascia','Giorno','Peso (g)','Variazione','Nota']];
+  const body=rowsData.map((r,i)=>{
+    const g=litter.birthDate?dayAge(litter.birthDate,r.date):'-';
+    const w = r.data[kitten.id];
+    const delta=i>0?(w - rowsData[i-1].data[kitten.id]).toFixed(1):null;
     const sign=delta===null?'-':(delta>=0?`+${delta}g`:`${delta}g`);
-    return[fmtFull(w.date),w.time||'',String(g),`${w.weight} g`,sign,''];
+    return[fmtFull(r.date), r.fascia, String(g),`${w} g`,sign,''];
   });
   doc.autoTable({head,body,startY:y,
     styles:{fontSize:9,cellPadding:2.5},
     headStyles:{fillColor:[44,62,53],textColor:[240,234,214],fontStyle:'bold'},
     alternateRowStyles:{fillColor:[250,247,242]},
-    columnStyles:{0:{cellWidth:24},1:{cellWidth:14},2:{cellWidth:14,halign:'center'},3:{cellWidth:18,halign:'right'},4:{cellWidth:20,halign:'right'},5:{cellWidth:'auto'}},
+    columnStyles:{0:{cellWidth:24},1:{cellWidth:22},2:{cellWidth:14,halign:'center'},3:{cellWidth:18,halign:'right'},4:{cellWidth:20,halign:'right'},5:{cellWidth:'auto'}},
     margin:{left:PL,right:PR},
     didDrawPage:({pageNumber})=>pdfFooter(doc,pageNumber)
   });
@@ -509,10 +591,9 @@ function LitterChart({kittens}){
   const mn=Math.min(...allVals),mx=Math.max(...allVals),rng=mx-mn||50;
   const pMin=mn-rng*.12,pMax=mx+rng*.2;
   
-  // Aumentata risoluzione viewBox per linee più fini su PC e margine destro (PR) aumentato per i nomi lunghi
   const W=400,H=220,PL=35,PR=65,PT=15,PB=25,cw=W-PL-PR,ch=H-PT-PB;
   
-  // Scala basata sul tempo reale per raggruppare le pesate dello stesso giorno
+  // Scala basata sul tempo reale
   const tVals = allDts.map(dt=>new Date(dt).getTime());
   const tMin = Math.min(...tVals), tMax = Math.max(...tVals);
   const toX = dt => tMin===tMax ? PL+cw/2 : PL+((new Date(dt).getTime()-tMin)/(tMax-tMin))*cw;
@@ -530,7 +611,6 @@ function LitterChart({kittens}){
       <text x={PL-4} y={y+3} textAnchor="end" fontSize="8" fill="#A09888">{Math.round(v)}</text>
     </g>;})}
     
-    {/* Stampa etichette asse X solo per date uniche per non accavallarle */}
     {(()=>{
       const uniqueDates = [...new Set(allDts.map(dt => dt.split('T')[0]))];
       const step = Math.ceil(uniqueDates.length / 6);
@@ -563,7 +643,6 @@ function BigChart({weights,color}){
   const mn=Math.min(...vals),mx=Math.max(...vals),rng=mx-mn||50;
   const pMin=mn-rng*.12,pMax=mx+rng*.12;
   
-  // Aumentata risoluzione viewBox per linee più fini
   const W=400,H=200,PL=35,PR=20,PT=15,PB=25,cw=W-PL-PR,ch=H-PT-PB;
   
   // Scala basata sul tempo reale
@@ -585,7 +664,6 @@ function BigChart({weights,color}){
     <polygon points={`${pts} ${toX(vals.length-1)},${PT+ch} ${PL},${PT+ch}`} fill={`url(#bc${id})`}/>
     <polyline points={pts} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
     {vals.map((v,i)=>{
-      // Mostra l'etichetta solo se è il primo punto del giorno
       const showLbl = i===0 || weights[i].date !== weights[i-1].date;
       return <g key={i}>
         <circle cx={toX(i)} cy={toY(v)} r="3" fill="white" stroke={color} strokeWidth="2"/>
