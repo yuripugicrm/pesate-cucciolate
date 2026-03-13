@@ -363,12 +363,25 @@ function exportKittenCSV(kitten,litter){
 // ─────────────────────────────────────────────────────────────────────────────
 // EXPORT — PDF
 // ─────────────────────────────────────────────────────────────────────────────
-function pdfHeader(doc,title,subtitle){
+function pdfHeader(doc,title,subtitle,drawCat=false){
   const W=210;
   doc.setFillColor(44,62,53);doc.rect(0,0,W,30,'F');
-  doc.setTextColor(240,234,214);
-  doc.setFontSize(16);doc.setFont('helvetica','bold');
-  doc.text(title,15,13);
+  
+  // Icona muso del gatto disegnata in vettoriale per aggirare i problemi di emoji nel PDF
+  if(drawCat){
+    doc.setFillColor(240,234,214);
+    doc.circle(20, 11, 4.5, 'F'); // testa
+    doc.triangle(16.5, 8.5, 17, 3.5, 19.5, 6.5, 'F'); // orecchio sx
+    doc.triangle(23.5, 8.5, 23, 3.5, 20.5, 6.5, 'F'); // orecchio dx
+    doc.setTextColor(240,234,214);
+    doc.setFontSize(16);doc.setFont('helvetica','bold');
+    doc.text(title,28,13);
+  } else {
+    doc.setTextColor(240,234,214);
+    doc.setFontSize(16);doc.setFont('helvetica','bold');
+    doc.text(title,15,13);
+  }
+  
   doc.setFontSize(9);doc.setFont('helvetica','normal');
   doc.text(subtitle,15,22);
   doc.setTextColor(44,62,53);
@@ -387,7 +400,7 @@ function exportLitterPDF(litter){
   const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
   const W=210,PL=15,PR=15;
 
-  pdfHeader(doc,`🐱 ${litter.name}`,'Scheda cucciolata completa');
+  pdfHeader(doc, litter.name, 'Scheda cucciolata completa', true);
 
   let y=38;
   doc.setFontSize(9.5);
@@ -395,7 +408,7 @@ function exportLitterPDF(litter){
     litter.mother&&`Madre: ${litter.mother}`,
     litter.father&&`Padre: ${litter.father}`,
     litter.birthDate&&`Data nascita: ${fmtFull(litter.birthDate)}`,
-    `Cuccioli: ${litter.kittens.length} (${litter.kittens.filter(k=>k.gender==='M').length}♂, ${litter.kittens.filter(k=>k.gender==='F').length}♀)`,
+    `Cuccioli: ${litter.kittens.length} (${litter.kittens.filter(k=>k.gender==='M').length} maschi, ${litter.kittens.filter(k=>k.gender==='F').length} femmine)`,
   ].filter(Boolean);
   info.forEach(t=>{doc.text(t,PL,y);y+=5.5;});
   y+=2;
@@ -419,7 +432,7 @@ function exportLitterPDF(litter){
   }
 
   const rowsData = buildExportRows(litter.kittens);
-  const head=[['Data','Fascia','G°',...litter.kittens.map(k=>`${k.name}\n${k.gender==='M'?'♂':'♀'}`)]];
+  const head=[['Data','Fascia','G°',...litter.kittens.map(k=>`${k.name}\n(${k.gender})`)]];
   const body=rowsData.map(r=>{
     const g=litter.birthDate?dayAge(litter.birthDate,r.date):'-';
     // Abbreviamo in MAT. POM. SER. per questioni di spazio nel PDF
@@ -446,7 +459,7 @@ function exportKittenPDF(kitten,litter){
   const col=lineColor(kitten);
   const rgb=hexToRgb(col);
 
-  pdfHeader(doc,`${kitten.name} (${kitten.gender==='M'?'♂':'♀'})`,litter.name);
+  pdfHeader(doc, `${kitten.name} (${kitten.gender})`, litter.name, false);
   doc.setFillColor(rgb.r,rgb.g,rgb.b);doc.circle(W-PR-6,15,5,'F');
 
   let y=38;
